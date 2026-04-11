@@ -11,8 +11,7 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 // Multi-channel config (future-proof)
 const channels = {
   ai: process.env.TELEGRAM_AI,
-  saas: process.env.TELEGRAM_SAAS,
-  general: process.env.TELEGRAM_GENERAL
+  saas: process.env.TELEGRAM_SAAS
 };
 
 // Format message
