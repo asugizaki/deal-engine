@@ -4,6 +4,7 @@ const fetchDeals = require("./fetchDeals");
 const sendMessage = require("./sendMessage");
 const scoreDeal = require("./aiScorer");
 const resolveAffiliate = require("./affiliateNetworkResolver");
+const cleanText = require("./cleanText");
 
 // -----------------------------
 // LOAD CACHE
@@ -37,6 +38,8 @@ function escapeHtml(text) {
 // FORMAT MESSAGE
 // -----------------------------
 function formatDeal(deal) {
+  const safeName = cleanText(deal.name);
+  const safeDesc = cleanText(deal.description);
   const tag =
     deal.score >= 8
       ? "🔥 TOP PICK"
@@ -51,9 +54,9 @@ function formatDeal(deal) {
   return `
   🔥 ${tag}
   
-  🔥 <b>${escapeHtml(deal.name)}</b>
+  🔥 <b>${safeName}</b>
   
-  ${deal.description || "AI tool"}
+  ${safeDesc || "AI tool"}
   
   📊 Score: ${deal.score}/10
   
@@ -139,7 +142,7 @@ async function run() {
       console.log(`⭐ Score: ${deal.score}`);
       console.log(`🏷️ Affiliate: ${deal.affiliateNetwork || "none"}`);
 
-      const message = formatDeal(deal);
+      const message = cleanText(formatDeal(deal));
       const targetChannels = getChannels(deal);
 
       console.log("📤 Channels:", targetChannels);
@@ -152,6 +155,8 @@ async function run() {
       for (const channel of targetChannels) {
         try {
           console.log(`➡️ Sending to ${channel}...`);
+          console.log("🧪 RAW LENGTH:", message.length);
+          console.log("🧪 RAW CHAR SAMPLE:", message.slice(0, 100));
 
           const res = await sendMessage(token, channel, message);
 
