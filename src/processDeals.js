@@ -2,7 +2,7 @@ const fs = require("fs");
 const sendMessage = require("./sendMessage");
 
 // Load data
-const deals = JSON.parse(fs.readFileSync("./data/deals.json"));
+const fetchDeals = require("./fetchDeals");
 const cache = JSON.parse(fs.readFileSync("./data/cache.json"));
 
 // Env
@@ -52,7 +52,9 @@ function getChannelsForDeal(deal) {
 }
 
 async function run() {
-  for (const deal of deals) {
+  const deals = await fetchDeals();
+
+  for (const deal of deals)
     console.log("\n==============================");
     console.log(`🔍 Processing deal: ${deal.name}`);
     console.log(`🆔 Deal ID: ${deal.id}`);
