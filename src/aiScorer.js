@@ -64,10 +64,11 @@ function keywordScore(text) {
 // Monetization potential score
 // -----------------------------
 function monetizationScore(price) {
-  if (price >= 50) return 10;
+  if (!price || price === 10) return 6; // default RSS assumption
+  if (price >= 50) return 9;
   if (price >= 20) return 7;
-  if (price >= 10) return 5;
-  return 2;
+  if (price >= 10) return 6;
+  return 4;
 }
 
 // -----------------------------
