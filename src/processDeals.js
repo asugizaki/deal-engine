@@ -7,11 +7,7 @@ const cache = JSON.parse(fs.readFileSync("./data/cache.json"));
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
 // Multi-channel support
-const channels = {
-  general: process.env.TELEGRAM_GENERAL,
-  ai: process.env.TELEGRAM_AI,
-  saas: process.env.TELEGRAM_SAAS
-};
+const channel = process.env.TELEGRAM_AI;
 
 // Helper to send message
 function sendMessage(chatId, message) {
