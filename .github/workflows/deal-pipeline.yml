@@ -16,6 +16,8 @@ jobs:
         with:
           node-version: 20
 
+      - run: npm install
+
       - name: Run deal pipeline
         run: node src/processDeals.js
         env:
