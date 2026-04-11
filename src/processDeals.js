@@ -4,7 +4,6 @@ const fetchDeals = require("./fetchDeals");
 const sendMessage = require("./sendMessage");
 const scoreDeal = require("./aiScorer");
 const resolveAffiliate = require("./affiliateNetworkResolver");
-const cleanText = require("./cleanText");
 
 // -----------------------------
 // LOAD CACHE
