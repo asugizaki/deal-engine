@@ -1,6 +1,5 @@
 const sendMessage = require("./sendMessage");
 const scoreDeal = require("./aiScorer");
-const cleanText = require("./cleanText");
 
 // ----------------------
 // CONFIG
@@ -13,14 +12,37 @@ const CHANNELS = {
 const MIN_SCORE = 2;
 
 // ----------------------
-// SLEEP UTILITY (CRITICAL)
+// CLEAN TEXT (INLINE)
+// ----------------------
+function cleanText(text = "") {
+  return String(text)
+    // remove zero-width characters
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+
+    // normalize non-breaking spaces
+    .replace(/\u00A0/g, " ")
+
+    // remove weird indentation before line breaks
+    .replace(/[ \t]+\n/g, "\n")
+
+    // collapse multiple line breaks
+    .replace(/\n{3,}/g, "\n\n")
+
+    // remove control characters
+    .replace(/[\x00-\x1F\x7F]/g, "")
+
+    .trim();
+}
+
+// ----------------------
+// SLEEP UTILITY (CRITICAL FOR TELEGRAM)
 // ----------------------
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ----------------------
-// SAFE RETRY WRAPPER
+// SAFE TELEGRAM SENDER WITH RETRY
 // ----------------------
 async function sendWithRetry(chatId, message, retries = 2) {
   for (let i = 0; i <= retries; i++) {
@@ -35,10 +57,7 @@ async function sendWithRetry(chatId, message, retries = 2) {
     } catch (err) {
       console.log(`⚠️ Send attempt ${i + 1} failed`);
 
-      if (i === retries) {
-        console.log("❌ Final failure sending message");
-        return null;
-      }
+      if (i === retries) return null;
 
       await sleep(800 + Math.random() * 500);
     }
@@ -73,7 +92,7 @@ ${desc ? desc.slice(0, 120) : "AI / SaaS tool"}
 // MAIN PIPELINE
 // ----------------------
 async function processDeals(deals = []) {
-  console.log("🚀 Starting Deal Pipeline...");
+  console.log("🚀 Starting Deal Engine...");
   console.log("📡 Channels:", {
     ai: CHANNELS.ai ? "***" : "MISSING",
     saas: CHANNELS.saas ? "***" : "MISSING"
@@ -103,7 +122,7 @@ async function processDeals(deals = []) {
       // ----------------------
       const channels = [];
 
-      if (deal.category === "ai" || deal.name.toLowerCase().includes("ai")) {
+      if (deal.category === "ai" || deal.name?.toLowerCase().includes("ai")) {
         if (CHANNELS.ai) channels.push(CHANNELS.ai);
       } else {
         if (CHANNELS.saas) channels.push(CHANNELS.saas);
@@ -119,7 +138,7 @@ async function processDeals(deals = []) {
       // ----------------------
       // FORMAT MESSAGE
       // ----------------------
-      const message = formatDeal(deal);
+      const message = cleanText(formatDeal(deal));
 
       console.log("🧪 RAW LENGTH:", message.length);
       console.log("🧪 SAMPLE:", message.slice(0, 120));
@@ -141,7 +160,7 @@ async function processDeals(deals = []) {
         }
 
         // ----------------------
-        // CRITICAL RATE LIMIT FIX
+        // TELEGRAM RATE LIMIT SAFETY
         // ----------------------
         await sleep(800 + Math.random() * 400);
       }
