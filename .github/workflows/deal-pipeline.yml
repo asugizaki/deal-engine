@@ -1,0 +1,32 @@
+name: Deal Pipeline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */12 * * *"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Run deal pipeline
+        run: node src/processDeals.js
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_AI: ${{ secrets.TELEGRAM_AI }}
+          TELEGRAM_SAAS: ${{ secrets.TELEGRAM_SAAS }}
+          TELEGRAM_GENERAL: ${{ secrets.TELEGRAM_GENERAL }}
+
+      - name: Commit cache
+        run: |
+          git config user.name "bot"
+          git add data/cache.json
+          git commit -m "update cache" || exit 0
+          git push
