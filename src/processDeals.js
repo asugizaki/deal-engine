@@ -1,40 +1,44 @@
-const applyAffiliate = require("./affiliateEngine");
-const scoreDeal = require("./aiScorer");
 const fs = require("fs");
+
 const fetchDeals = require("./fetchDeals");
 const sendMessage = require("./sendMessage");
+const scoreDeal = require("./aiScorer");
+const applyAffiliate = require("./affiliateEngine");
 
-// Load cache
+// -----------------------------
+// LOAD CACHE
+// -----------------------------
 const cachePath = "./data/cache.json";
 const cache = JSON.parse(fs.readFileSync(cachePath));
 
-// Env
+// -----------------------------
+// ENV
+// -----------------------------
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
-// Multi-channel setup (future-ready)
+// ONLY ACTIVE CHANNELS (AI + SAAS)
 const channels = {
   ai: process.env.TELEGRAM_AI,
-  saas: process.env.TELEGRAM_SAAS,
-  general: process.env.TELEGRAM_GENERAL
+  saas: process.env.TELEGRAM_SAAS
 };
 
-console.log("🚀 Deal pipeline starting...");
-console.log("🌐 Channels:", channels);
-console.log("📦 Loaded cache:", cache.posted_ids.length, "items");
+console.log("🚀 Starting AI Deal Engine...");
+console.log("📡 Channels:", channels);
+console.log("💾 Cached items:", cache.posted_ids.length);
 
 // -----------------------------
-// FORMAT DEAL MESSAGE
+// FORMAT MESSAGE
 // -----------------------------
 function formatDeal(deal) {
-  const qualityTag =
-    deal.score >= 6
-      ? "🔥 HIGH QUALITY"
-      : deal.score >= 4
-      ? "⚡ GOOD DEAL"
-      : "🟡 NEW";
+  const label =
+    deal.score >= 8
+      ? "🔥 TOP AI PICK"
+      : deal.score >= 6
+      ? "⚡ HIGH QUALITY"
+      : "🟡 TRENDING";
 
   return `
-${qualityTag}
+${label}
 
 🔥 *${deal.name}*
 
@@ -42,12 +46,14 @@ ${deal.description || "AI tool"}
 
 💰 Price: ${deal.price || "N/A"}
 
-👉 👉 [Get Deal](${deal.url})
+📊 Score: ${deal.score}/10
+
+👉 [Get Deal](${deal.url})
 `;
 }
 
 // -----------------------------
-// CHANNEL ROUTING LOGIC
+// CHANNEL ROUTING
 // -----------------------------
 function getChannels(deal) {
   const targets = [];
@@ -60,10 +66,6 @@ function getChannels(deal) {
     targets.push(channels.saas);
   }
 
-  if (channels.general) {
-    targets.push(channels.general);
-  }
-
   return targets;
 }
 
@@ -72,43 +74,40 @@ function getChannels(deal) {
 // -----------------------------
 async function run() {
   try {
+    console.log("\n🌐 Fetching deals...");
     let deals = await fetchDeals();
 
-    console.log(`📡 Raw deals fetched: ${deals.length}`);
+    console.log(`📦 Raw deals: ${deals.length}`);
 
     // -----------------------------
-    // FILTERING LAYER
+    // AI SCORING + AFFILIATE LAYER
+    // -----------------------------
+    deals = deals
+      .map(scoreDeal)
+      .map(applyAffiliate);
+
+    console.log("🧠 Scoring + affiliate enrichment complete");
+
+    // -----------------------------
+    // FILTERING
     // -----------------------------
     deals = deals
       .filter((d) => d && d.name)
-      .map(scoreDeal) // 🧠 AI scoring happens here
-      .filter((d) => d.score >= 5); // only good conversion potential
-      // commented out .filter((d) => !cache.posted_ids.includes(d.id));
-
-    console.log("🧠 Scores:");
-    console.log("  keyword:", deal.keywordScore);
-    console.log("  brand:", deal.brandScore);
-    console.log("  monetization:", deal.monetizationScore);
-    console.log("  FINAL:", deal.score);
+      .filter((d) => d.score >= 5)
+      .filter((d) => !cache.posted_ids.includes(d.id));
 
     console.log(`🔥 After filtering: ${deals.length}`);
 
-    // Sort by quality (best first)
+    // Sort by best potential first
     deals.sort((a, b) => b.score - a.score);
 
     // -----------------------------
     // PROCESS EACH DEAL
     // -----------------------------
-    for (let deal of deals) {
-      deal = applyAffiliate(deal);
-    
-      console.log("🏷️ Detected brand:", deal.brand);
-      console.log("🔗 Affiliate URL:", deal.url);
-    
-      console.log("🔗 Affiliate URL:", deal.url);
+    for (const deal of deals) {
       console.log("\n==============================");
-      console.log(`🔍 Processing: ${deal.name}`);
-      console.log(`🆔 ID: ${deal.id}`);
+      console.log(`🔍 Deal: ${deal.name}`);
+      console.log(`🏷️ Brand: ${deal.brand || "unknown"}`);
       console.log(`⭐ Score: ${deal.score}`);
 
       const message = formatDeal(deal);
@@ -117,7 +116,7 @@ async function run() {
       console.log("📤 Channels:", targetChannels);
 
       if (!targetChannels.length) {
-        console.log("⚠️ No channels matched — skipping");
+        console.log("⚠️ No matching channels — skipping");
         continue;
       }
 
@@ -127,29 +126,29 @@ async function run() {
 
           const res = await sendMessage(token, channel, message);
 
-          console.log("📩 Telegram status:", res.status);
+          console.log("📩 Status:", res.status);
           console.log("📩 Response:", res.body);
         } catch (err) {
           console.error("❌ Send failed:", err.message);
         }
       }
 
-      // Mark as posted
+      // -----------------------------
+      // UPDATE CACHE
+      // -----------------------------
       cache.posted_ids.push(deal.id);
       console.log(`💾 Cached: ${deal.id}`);
     }
 
-    // -----------------------------
-    // SAVE CACHE
-    // -----------------------------
+    // Save cache
     fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
 
     console.log("\n✅ Pipeline complete");
-    console.log(`💾 Cache saved (${cache.posted_ids.length} items)`);
+    console.log(`💾 Total cached: ${cache.posted_ids.length}`);
   } catch (err) {
     console.error("❌ Pipeline error:", err);
   }
 }
 
-// Run
+// RUN
 run();
