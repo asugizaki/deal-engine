@@ -3,7 +3,7 @@ const fs = require("fs");
 const fetchDeals = require("./fetchDeals");
 const sendMessage = require("./sendMessage");
 const scoreDeal = require("./aiScorer");
-const applyAffiliate = require("./affiliateEngine");
+const resolveAffiliate = require("./affiliateResolver");
 
 // -----------------------------
 // LOAD CACHE
@@ -16,39 +16,39 @@ const cache = JSON.parse(fs.readFileSync(cachePath));
 // -----------------------------
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
-// ONLY ACTIVE CHANNELS (AI + SAAS)
+// ONLY ACTIVE CHANNELS
 const channels = {
   ai: process.env.TELEGRAM_AI,
   saas: process.env.TELEGRAM_SAAS
 };
 
-console.log("🚀 Starting AI Deal Engine...");
+console.log("🚀 AI Deal Engine Starting...");
 console.log("📡 Channels:", channels);
-console.log("💾 Cached items:", cache.posted_ids.length);
+console.log("💾 Cached:", cache.posted_ids.length);
 
 // -----------------------------
 // FORMAT MESSAGE
 // -----------------------------
 function formatDeal(deal) {
-  const label =
+  const tag =
     deal.score >= 8
-      ? "🔥 TOP AI PICK"
+      ? "🔥 TOP PICK"
       : deal.score >= 6
       ? "⚡ HIGH QUALITY"
       : "🟡 TRENDING";
 
   return `
-${label}
+${tag}
 
 🔥 *${deal.name}*
 
 ${deal.description || "AI tool"}
 
-💰 Price: ${deal.price || "N/A"}
-
 📊 Score: ${deal.score}/10
 
-👉 [Get Deal](${deal.url})
+💰 Price: ${deal.price || "N/A"}
+
+👉 ${deal.monetizedUrl || deal.url}
 `;
 }
 
@@ -80,47 +80,49 @@ async function run() {
     console.log(`📦 Raw deals: ${deals.length}`);
 
     // -----------------------------
-    // AI SCORING + AFFILIATE LAYER
+    // SCORING + AFFILIATE LAYER
     // -----------------------------
     deals = deals
       .map(scoreDeal)
-      .map(applyAffiliate);
+      .map(resolveAffiliate);
 
     console.log("🧠 Scoring + affiliate enrichment complete");
 
-    console.log("\n🧠 SAMPLE SCORED DEALS (DEBUG):");
-    
+    // -----------------------------
+    // DEBUG SAMPLE (IMPORTANT)
+    // -----------------------------
+    console.log("\n🧠 SAMPLE SCORED DEALS:");
     console.log(
-      deals.slice(0, 5).map(d => ({
+      deals.slice(0, 3).map(d => ({
         name: d.name,
         score: d.score,
         brandScore: d.brandScore,
         keywordScore: d.keywordScore,
-        monetizationScore: d.monetizationScore
+        monetizationScore: d.monetizationScore,
+        hasAffiliate: !!d.monetizedUrl
       }))
     );
 
     // -----------------------------
-    // FILTERING
+    // FILTERING (FIXED FOR REAL DATA)
     // -----------------------------
     deals = deals
-      .filter((d) => d && d.name)
-      .filter((d) => d.score >= 2)
-      .filter((d) => !cache.posted_ids.includes(d.id));
+      .filter(d => d && d.name)
+      .filter(d => d.score >= 2)
+      .filter(d => !cache.posted_ids.includes(d.id));
 
     console.log(`🔥 After filtering: ${deals.length}`);
 
-    // Sort by best potential first
+    // Sort best first
     deals.sort((a, b) => b.score - a.score);
 
     // -----------------------------
-    // PROCESS EACH DEAL
+    // PROCESS DEALS
     // -----------------------------
     for (const deal of deals) {
       console.log("\n==============================");
-      console.log(`🔍 Deal: ${deal.name}`);
-      console.log(`🏷️ Brand: ${deal.brand || "unknown"}`);
-      console.log(`⭐ Score: ${deal.score}`);
+      console.log(`🔍 ${deal.name}`);
+      console.log(`🏷️ Score: ${deal.score}`);
 
       const message = formatDeal(deal);
       const targetChannels = getChannels(deal);
@@ -141,18 +143,17 @@ async function run() {
           console.log("📩 Status:", res.status);
           console.log("📩 Response:", res.body);
         } catch (err) {
-          console.error("❌ Send failed:", err.message);
+          console.error("❌ Send error:", err.message);
         }
       }
 
       // -----------------------------
-      // UPDATE CACHE
+      // CACHE UPDATE
       // -----------------------------
       cache.posted_ids.push(deal.id);
       console.log(`💾 Cached: ${deal.id}`);
     }
 
-    // Save cache
     fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
 
     console.log("\n✅ Pipeline complete");
@@ -162,5 +163,4 @@ async function run() {
   }
 }
 
-// RUN
 run();
