@@ -1,205 +1,160 @@
-const fs = require("fs");
-
-const fetchDeals = require("./fetchDeals");
 const sendMessage = require("./sendMessage");
 const scoreDeal = require("./aiScorer");
-const resolveAffiliate = require("./affiliateNetworkResolver");
+const cleanText = require("./cleanText");
 
-// -----------------------------
-// LOAD CACHE
-// -----------------------------
-const cachePath = "./data/cache.json";
-const cache = JSON.parse(fs.readFileSync(cachePath));
-
-// -----------------------------
-// ENV
-// -----------------------------
-const token = process.env.TELEGRAM_BOT_TOKEN;
-
-// ONLY ACTIVE CHANNELS
-const channels = {
+// ----------------------
+// CONFIG
+// ----------------------
+const CHANNELS = {
   ai: process.env.TELEGRAM_AI,
   saas: process.env.TELEGRAM_SAAS
 };
 
-console.log("🚀 AI Deal Engine Starting...");
-console.log("📡 Channels:", channels);
-console.log("💾 Cached deals:", cache.posted_ids.length);
+const MIN_SCORE = 2;
 
-function escapeHtml(text) {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+// ----------------------
+// SLEEP UTILITY (CRITICAL)
+// ----------------------
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function cleanText(text = "") {
-  return text
-    // remove zero-width characters
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+// ----------------------
+// SAFE RETRY WRAPPER
+// ----------------------
+async function sendWithRetry(chatId, message, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await sendMessage(chatId, message);
 
-    // normalize weird spaces
-    .replace(/\u00A0/g, " ")
+      if (res?.status === 200 || res?.ok) {
+        return res;
+      }
 
-    // remove excessive indentation
-    .replace(/[ \t]+\n/g, "\n")
+      throw new Error(`Telegram failed: ${res?.status}`);
+    } catch (err) {
+      console.log(`⚠️ Send attempt ${i + 1} failed`);
 
-    // remove multiple line breaks
-    .replace(/\n{3,}/g, "\n\n")
+      if (i === retries) {
+        console.log("❌ Final failure sending message");
+        return null;
+      }
 
-    // trim
-    .trim();
+      await sleep(800 + Math.random() * 500);
+    }
+  }
 }
 
-// -----------------------------
-// FORMAT MESSAGE
-// -----------------------------
+// ----------------------
+// FORMAT MESSAGE (HTML SAFE)
+// ----------------------
 function formatDeal(deal) {
-  const safeName = cleanText(deal.name);
-  const safeDesc = cleanText(deal.description);
-  const tag =
-    deal.score >= 8
-      ? "🔥 TOP PICK"
-      : deal.score >= 6
-      ? "⚡ HIGH QUALITY"
-      : "🟡 TRENDING";
-
-  const affiliateInfo = deal.affiliateNetwork
-    ? `💰 Affiliate: ${deal.affiliateNetwork}`
-    : "🔎 No affiliate program found";
+  const name = cleanText(deal.name);
+  const desc = cleanText(deal.description || "");
 
   return `
-  🔥 ${tag}
-  
-  🔥 <b>${safeName}</b>
-  
-  ${safeDesc || "AI tool"}
-  
-  📊 Score: ${deal.score}/10
-  
-  💰 Affiliate: ${deal.affiliateNetwork || "none"}
-  
-  💰 Price: ${deal.price || "N/A"}
-  
-  👉 ${deal.monetizedUrl || deal.url}
-  `;
+🔥 🟡 TRENDING
+
+🔥 <b>${name}</b>
+
+${desc ? desc.slice(0, 120) : "AI / SaaS tool"}
+
+📊 Score: ${deal.score}/10
+
+💰 Affiliate: ${deal.affiliateNetwork || "none"}
+
+💰 Price: ${deal.price || "N/A"}
+
+👉 ${deal.url}
+`;
 }
 
-// -----------------------------
-// CHANNEL ROUTING
-// -----------------------------
-function getChannels(deal) {
-  const targets = [];
-
-  if (deal.category?.startsWith("ai") && channels.ai) {
-    targets.push(channels.ai);
-  }
-
-  if (deal.category?.startsWith("saas") && channels.saas) {
-    targets.push(channels.saas);
-  }
-
-  return targets;
-}
-
-// -----------------------------
+// ----------------------
 // MAIN PIPELINE
-// -----------------------------
-async function run() {
-  try {
-    console.log("\n🌐 Fetching deals...");
-    let deals = await fetchDeals();
+// ----------------------
+async function processDeals(deals = []) {
+  console.log("🚀 Starting Deal Pipeline...");
+  console.log("📡 Channels:", {
+    ai: CHANNELS.ai ? "***" : "MISSING",
+    saas: CHANNELS.saas ? "***" : "MISSING"
+  });
 
-    console.log(`📦 Raw deals fetched: ${deals.length}`);
+  let sent = 0;
+  let failed = 0;
 
-    // -----------------------------
-    // AI SCORING + AFFILIATE RESOLUTION
-    // -----------------------------
-    deals = deals
-      .map(scoreDeal)
-      .map(resolveAffiliate);
+  for (const rawDeal of deals) {
+    try {
+      // ----------------------
+      // SCORE DEAL
+      // ----------------------
+      const deal = scoreDeal(rawDeal);
 
-    console.log("🧠 Scoring + affiliate resolution complete");
-
-    // -----------------------------
-    // DEBUG SAMPLE (IMPORTANT)
-    // -----------------------------
-    console.log("\n🧠 SAMPLE SCORED DEALS:");
-    console.log(
-      deals.slice(0, 5).map((d) => ({
-        name: d.name,
-        score: d.score,
-        brandScore: d.brandScore,
-        keywordScore: d.keywordScore,
-        monetizationScore: d.monetizationScore,
-        affiliateNetwork: d.affiliateNetwork || null,
-        hasAffiliate: !!d.monetizedUrl
-      }))
-    );
-
-    // -----------------------------
-    // FILTERING (REAL-WORLD SAFE)
-    // -----------------------------
-    deals = deals
-      .filter((d) => d && d.name)
-      .filter((d) => d.score >= 1);
-      // comment out for now .filter((d) => !cache.posted_ids.includes(d.id));
-
-    console.log(`🔥 After filtering: ${deals.length}`);
-
-    // Sort best first
-    deals.sort((a, b) => b.score - a.score);
-
-    // -----------------------------
-    // PROCESS EACH DEAL
-    // -----------------------------
-    for (const deal of deals) {
       console.log("\n==============================");
-      console.log(`🔍 Processing: ${deal.name}`);
-      console.log(`⭐ Score: ${deal.score}`);
-      console.log(`🏷️ Affiliate: ${deal.affiliateNetwork || "none"}`);
+      console.log("🔍 Processing:", deal.name);
+      console.log("⭐ Score:", deal.score);
 
-      const message = cleanText(formatDeal(deal));
-      const targetChannels = getChannels(deal);
-
-      console.log("📤 Channels:", targetChannels);
-
-      if (!targetChannels.length) {
-        console.log("⚠️ No matching channels — skipping");
+      if (deal.score < MIN_SCORE) {
+        console.log("⛔ Skipped (low score)");
         continue;
       }
 
-      for (const channel of targetChannels) {
-        try {
-          console.log(`➡️ Sending to ${channel}...`);
-          console.log("🧪 RAW LENGTH:", message.length);
-          console.log("🧪 RAW CHAR SAMPLE:", message.slice(0, 100));
+      // ----------------------
+      // CHANNEL ROUTING
+      // ----------------------
+      const channels = [];
 
-          const res = await sendMessage(token, channel, message);
-
-          console.log("📩 Status:", res.status);
-          console.log("📩 Response:", res.body);
-        } catch (err) {
-          console.error("❌ Telegram send error:", err.message);
-        }
+      if (deal.category === "ai" || deal.name.toLowerCase().includes("ai")) {
+        if (CHANNELS.ai) channels.push(CHANNELS.ai);
+      } else {
+        if (CHANNELS.saas) channels.push(CHANNELS.saas);
       }
 
-      // -----------------------------
-      // CACHE UPDATE
-      // -----------------------------
-      cache.posted_ids.push(deal.id);
-      console.log(`💾 Cached: ${deal.id}`);
+      console.log("📤 Channels:", channels);
+
+      if (!channels.length) {
+        console.log("⚠️ No channels configured");
+        continue;
+      }
+
+      // ----------------------
+      // FORMAT MESSAGE
+      // ----------------------
+      const message = formatDeal(deal);
+
+      console.log("🧪 RAW LENGTH:", message.length);
+      console.log("🧪 SAMPLE:", message.slice(0, 120));
+
+      // ----------------------
+      // SEND TO TELEGRAM
+      // ----------------------
+      for (const channel of channels) {
+        console.log("➡️ Sending to:", channel);
+
+        const result = await sendWithRetry(channel, message);
+
+        if (result) {
+          console.log("✅ Sent successfully");
+          sent++;
+        } else {
+          console.log("❌ Failed to send");
+          failed++;
+        }
+
+        // ----------------------
+        // CRITICAL RATE LIMIT FIX
+        // ----------------------
+        await sleep(800 + Math.random() * 400);
+      }
+    } catch (err) {
+      console.log("❌ Deal processing error:", err.message);
+      failed++;
     }
-
-    // Save cache
-    fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
-
-    console.log("\n✅ Pipeline complete");
-    console.log(`💾 Total cached: ${cache.posted_ids.length}`);
-  } catch (err) {
-    console.error("❌ Pipeline error:", err);
   }
+
+  console.log("\n==============================");
+  console.log("✅ PIPELINE COMPLETE");
+  console.log("📤 Sent:", sent);
+  console.log("❌ Failed:", failed);
 }
 
-// RUN
-run();
+module.exports = processDeals;
