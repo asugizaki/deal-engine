@@ -1,42 +1,78 @@
-const https = require("https");
+const Parser = require("rss-parser");
+const parser = new Parser();
 
-// Simple RSS fetch helper
-function fetchRSS(url) {
-  return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      let data = "";
+// Real sources
+const SOURCES = [
+  {
+    name: "producthunt-ai",
+    url: "https://www.producthunt.com/feed?category=AI"
+  }
+];
 
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => resolve(data));
-    }).on("error", reject);
+// Simple keyword scoring system
+const AI_KEYWORDS = [
+  "ai",
+  "gpt",
+  "automation",
+  "copilot",
+  "assistant",
+  "generate",
+  "chat",
+  "model",
+  "llm",
+  "image",
+  "text"
+];
+
+function scoreDeal(text) {
+  const lower = text.toLowerCase();
+  let score = 0;
+
+  AI_KEYWORDS.forEach((kw) => {
+    if (lower.includes(kw)) score += 2;
   });
+
+  return score;
 }
 
-// Product Hunt AI RSS feed
-const PRODUCT_HUNT_AI_RSS =
-  "https://www.producthunt.com/feed?category=AI";
-
 async function fetchDeals() {
-  console.log("🌐 Fetching AI deals from sources...");
+  console.log("🌐 Fetching real AI deals...");
 
-  const rss = await fetchRSS(PRODUCT_HUNT_AI_RSS);
+  let allDeals = [];
 
-  console.log("📡 Raw RSS fetched (Product Hunt)");
+  for (const source of SOURCES) {
+    try {
+      console.log(`📡 Fetching: ${source.name}`);
 
-  // NOTE: We keep it simple for MVP
-  // Later we parse XML properly
-  return [
-    {
-      id: "ph-sample-001",
-      name: "AI Tool from Product Hunt",
-      description: "New AI tool discovered via Product Hunt",
-      price: "Varies",
-      original_price: "",
-      discount: "NEW",
-      url: "https://producthunt.com",
-      category: "ai"
+      const feed = await parser.parseURL(source.url);
+
+      const deals = feed.items.map((item) => {
+        const title = item.title || "";
+        const link = item.link || "";
+        const desc = item.contentSnippet || "";
+
+        const rawText = `${title} ${desc}`;
+        const score = scoreDeal(rawText);
+
+        return {
+          id: item.guid || link,
+          name: title,
+          description: desc.slice(0, 200),
+          url: link,
+          category: "ai",
+          score
+        };
+      });
+
+      allDeals = allDeals.concat(deals);
+    } catch (err) {
+      console.error(`❌ Failed source ${source.name}:`, err.message);
     }
-  ];
+  }
+
+  console.log(`📦 Raw deals fetched: ${allDeals.length}`);
+
+  return allDeals;
 }
 
 module.exports = fetchDeals;
