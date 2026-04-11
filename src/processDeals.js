@@ -1,3 +1,4 @@
+const applyAffiliate = require("./affiliates");
 const fs = require("fs");
 const fetchDeals = require("./fetchDeals");
 const sendMessage = require("./sendMessage");
@@ -40,7 +41,7 @@ ${deal.description || "AI tool"}
 
 💰 Price: ${deal.price || "N/A"}
 
-👉 ${deal.url}
+👉 👉 [Get Deal](${deal.url})
 `;
 }
 
@@ -90,7 +91,11 @@ async function run() {
     // -----------------------------
     // PROCESS EACH DEAL
     // -----------------------------
-    for (const deal of deals) {
+    for (let deal of deals) {
+      // APPLY AFFILIATE ENRICHMENT
+      deal = applyAffiliate(deal);
+    
+      console.log("🔗 Affiliate URL:", deal.url);
       console.log("\n==============================");
       console.log(`🔍 Processing: ${deal.name}`);
       console.log(`🆔 ID: ${deal.id}`);
