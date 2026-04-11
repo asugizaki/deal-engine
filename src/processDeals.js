@@ -26,6 +26,13 @@ console.log("🚀 AI Deal Engine Starting...");
 console.log("📡 Channels:", channels);
 console.log("💾 Cached deals:", cache.posted_ids.length);
 
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 // -----------------------------
 // FORMAT MESSAGE
 // -----------------------------
@@ -42,20 +49,20 @@ function formatDeal(deal) {
     : "🔎 No affiliate program found";
 
   return `
-${tag}
-
-🔥 *${deal.name}*
-
-${deal.description || "AI tool"}
-
-📊 Score: ${deal.score}/10
-
-${affiliateInfo}
-
-💰 Price: ${deal.price || "N/A"}
-
-👉 ${deal.monetizedUrl || deal.url}
-`;
+  🔥 ${tag}
+  
+  🔥 <b>${escapeHtml(deal.name)}</b>
+  
+  ${deal.description || "AI tool"}
+  
+  📊 Score: ${deal.score}/10
+  
+  💰 Affiliate: ${deal.affiliateNetwork || "none"}
+  
+  💰 Price: ${deal.price || "N/A"}
+  
+  👉 ${deal.monetizedUrl || deal.url}
+  `;
 }
 
 // -----------------------------
