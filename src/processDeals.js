@@ -93,7 +93,7 @@ async function run() {
     // -----------------------------
     deals = deals
       .filter((d) => d && d.name)
-      .filter((d) => d.score >= 5)
+      .filter((d) => d.score >= 2)
       .filter((d) => !cache.posted_ids.includes(d.id));
 
     console.log(`🔥 After filtering: ${deals.length}`);
