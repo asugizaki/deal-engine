@@ -1,16 +1,13 @@
 [
   {
     "id": "notion-ai-001",
-    "title": "Notion AI 40% Off",
-    "url": "https://example.com/notion",
+    "name": "Notion AI",
+    "description": "AI writing assistant inside Notion",
     "price": "$6/month",
-    "category": "ai"
-  },
-  {
-    "id": "figma-002",
-    "title": "Figma Pro Discount",
-    "url": "https://example.com/figma",
-    "price": "$10/month",
-    "category": "saas"
+    "original_price": "$10/month",
+    "discount": "40% OFF",
+    "url": "https://your-affiliate-link.com",
+    "category": "ai-writing",
+    "tags": ["writing", "productivity"]
   }
 ]
