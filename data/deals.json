@@ -1,0 +1,16 @@
+[
+  {
+    "id": "notion-ai-001",
+    "title": "Notion AI 40% Off",
+    "url": "https://example.com/notion",
+    "price": "$6/month",
+    "category": "ai"
+  },
+  {
+    "id": "figma-002",
+    "title": "Figma Pro Discount",
+    "url": "https://example.com/figma",
+    "price": "$10/month",
+    "category": "saas"
+  }
+]
