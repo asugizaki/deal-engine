@@ -33,6 +33,24 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;");
 }
 
+function cleanText(text = "") {
+  return text
+    // remove zero-width characters
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+
+    // normalize weird spaces
+    .replace(/\u00A0/g, " ")
+
+    // remove excessive indentation
+    .replace(/[ \t]+\n/g, "\n")
+
+    // remove multiple line breaks
+    .replace(/\n{3,}/g, "\n\n")
+
+    // trim
+    .trim();
+}
+
 // -----------------------------
 // FORMAT MESSAGE
 // -----------------------------
