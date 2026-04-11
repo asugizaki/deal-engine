@@ -82,9 +82,9 @@ function scoreDeal(deal) {
   const mScore = monetizationScore(price);
 
   const finalScore = Math.round(
-    kScore * 0.5 +
-    bScore * 0.3 +
-    mScore * 0.2
+    kScore * 0.7 +
+    bScore * 0.2 +
+    mScore * 0.1
   );
 
   return {
