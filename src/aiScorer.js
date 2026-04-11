@@ -1,14 +1,3 @@
-const KNOWN_BRANDS = [
-  "notion",
-  "figma",
-  "openai",
-  "midjourney",
-  "zapier",
-  "canva",
-  "hubspot",
-  "grammarly"
-];
-
 const HIGH_VALUE_KEYWORDS = [
   "ai",
   "gpt",
@@ -18,83 +7,117 @@ const HIGH_VALUE_KEYWORDS = [
   "generate",
   "llm",
   "workflow",
-  "productivity"
+  "productivity",
+  "chat",
+  "write",
+  "builder",
+  "agent"
 ];
 
 // -----------------------------
-// Extract price value (rough)
+// BRAND SCORING (soft signal)
 // -----------------------------
-function extractPrice(deal) {
-  const text = (deal.price || "").toLowerCase();
+const KNOWN_BRANDS = [
+  "notion",
+  "figma",
+  "openai",
+  "midjourney",
+  "zapier",
+  "canva",
+  "hubspot",
+  "grammarly",
+  "slack"
+];
 
-  const match = text.match(/(\d+(\.\d+)?)/);
-  if (!match) return 10;
-
-  return parseFloat(match[1]);
-}
-
-// -----------------------------
-// Brand recognition score
-// -----------------------------
 function brandScore(text) {
   const lower = text.toLowerCase();
 
   for (const brand of KNOWN_BRANDS) {
-    if (lower.includes(brand)) return 8;
+    if (lower.includes(brand)) return 7;
   }
 
   return 3;
 }
 
 // -----------------------------
-// AI relevance score
+// KEYWORD SCORING (FIXED)
 // -----------------------------
 function keywordScore(text) {
   const lower = text.toLowerCase();
   let score = 0;
 
   for (const kw of HIGH_VALUE_KEYWORDS) {
-    if (lower.includes(kw)) score += 2;
+    if (lower.includes(kw)) {
+      score += 1.5; // softened weight (IMPORTANT FIX)
+    }
   }
 
   return Math.min(score, 10);
 }
 
 // -----------------------------
-// Monetization potential score
+// STRUCTURE SCORING (NEW - VERY IMPORTANT)
 // -----------------------------
-function monetizationScore(price) {
-  if (!price || price === 10) return 6; // default RSS assumption
-  if (price >= 50) return 9;
-  if (price >= 20) return 7;
-  if (price >= 10) return 6;
-  return 4;
+function structureScore(text) {
+  const lower = text.toLowerCase();
+  let score = 0;
+
+  // SaaS/product signals
+  if (lower.includes("tool")) score += 1;
+  if (lower.includes("platform")) score += 2;
+  if (lower.includes("workflow")) score += 3;
+  if (lower.includes("automation")) score += 3;
+  if (lower.includes("dashboard")) score += 2;
+  if (lower.includes("app")) score += 1;
+  if (lower.includes("builder")) score += 2;
+  if (lower.includes("assistant")) score += 2;
+
+  return Math.min(score, 10);
 }
 
 // -----------------------------
-// FINAL COMPOSITE SCORE
+// MONETIZATION POTENTIAL
+// -----------------------------
+function monetizationScore(text) {
+  const lower = text.toLowerCase();
+
+  let score = 4; // default baseline (IMPORTANT FIX)
+
+  if (lower.includes("subscription")) score += 3;
+  if (lower.includes("pro")) score += 2;
+  if (lower.includes("team")) score += 2;
+  if (lower.includes("business")) score += 2;
+  if (lower.includes("enterprise")) score += 3;
+
+  return Math.min(score, 10);
+}
+
+// -----------------------------
+// FINAL SCORE ENGINE
 // -----------------------------
 function scoreDeal(deal) {
-  const text = `${deal.name} ${deal.description}`;
+  const text = `${deal.name} ${deal.description || ""}`;
 
   const kScore = keywordScore(text);
   const bScore = brandScore(text);
-  const price = extractPrice(deal);
-  const mScore = monetizationScore(price);
+  const sScore = structureScore(text);
+  const mScore = monetizationScore(text);
 
+  // Weighted scoring tuned for real-world RSS data
   const finalScore = Math.round(
-    kScore * 0.7 +
-    bScore * 0.2 +
-    mScore * 0.1
+    kScore * 0.3 +
+    bScore * 0.25 +
+    sScore * 0.3 +
+    mScore * 0.15
   );
 
   return {
     ...deal,
-    priceValue: price,
-    keywordScore: kScore,
+    keywordScore: Number(kScore.toFixed(1)),
     brandScore: bScore,
+    structureScore: sScore,
     monetizationScore: mScore,
-    score: finalScore
+    score: Math.max(1, Math.min(finalScore, 10)) // clamp 1–10
   };
 }
 
