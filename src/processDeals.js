@@ -1,4 +1,5 @@
 const applyAffiliate = require("./affiliateEngine");
+const scoreDeal = require("./aiScorer");
 const fs = require("fs");
 const fetchDeals = require("./fetchDeals");
 const sendMessage = require("./sendMessage");
@@ -80,8 +81,15 @@ async function run() {
     // -----------------------------
     deals = deals
       .filter((d) => d && d.name)
-      .filter((d) => d.score >= 3)
-      .filter((d) => !cache.posted_ids.includes(d.id));
+      .map(scoreDeal) // 🧠 AI scoring happens here
+      .filter((d) => d.score >= 5); // only good conversion potential
+      // commented out .filter((d) => !cache.posted_ids.includes(d.id));
+
+    console.log("🧠 Scores:");
+    console.log("  keyword:", deal.keywordScore);
+    console.log("  brand:", deal.brandScore);
+    console.log("  monetization:", deal.monetizationScore);
+    console.log("  FINAL:", deal.score);
 
     console.log(`🔥 After filtering: ${deals.length}`);
 
