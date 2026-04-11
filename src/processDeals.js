@@ -88,6 +88,18 @@ async function run() {
 
     console.log("🧠 Scoring + affiliate enrichment complete");
 
+    console.log("\n🧠 SAMPLE SCORED DEALS (DEBUG):");
+    
+    console.log(
+      deals.slice(0, 5).map(d => ({
+        name: d.name,
+        score: d.score,
+        brandScore: d.brandScore,
+        keywordScore: d.keywordScore,
+        monetizationScore: d.monetizationScore
+      }))
+    );
+
     // -----------------------------
     // FILTERING
     // -----------------------------
