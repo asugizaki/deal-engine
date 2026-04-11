@@ -7,7 +7,7 @@ function sendMessage(token, chatId, message) {
     const data = JSON.stringify({
       chat_id: chatId,
       text: message,
-      parse_mode: "Markdown"
+      parse_mode: "HTML"
     });
 
     const options = {
