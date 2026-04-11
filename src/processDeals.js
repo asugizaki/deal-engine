@@ -1,100 +1,140 @@
 const fs = require("fs");
+const fetchDeals = require("./fetchDeals");
 const sendMessage = require("./sendMessage");
 
-// Load data
-const fetchDeals = require("./fetchDeals");
-const cache = JSON.parse(fs.readFileSync("./data/cache.json"));
+// Load cache
+const cachePath = "./data/cache.json";
+const cache = JSON.parse(fs.readFileSync(cachePath));
 
 // Env
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
-// Multi-channel config (future-proof)
+// Multi-channel setup (future-ready)
 const channels = {
   ai: process.env.TELEGRAM_AI,
-  saas: process.env.TELEGRAM_SAAS
+  saas: process.env.TELEGRAM_SAAS,
+  general: process.env.TELEGRAM_GENERAL
 };
 
-// 🔍 Startup logs
-console.log("🚀 Starting deal pipeline...");
-console.log(`📦 Loaded ${deals.length} deals`);
-console.log("🧠 Cache state:", JSON.stringify(cache, null, 2));
-console.log("🌐 Channels config:", channels);
+console.log("🚀 Deal pipeline starting...");
+console.log("🌐 Channels:", channels);
+console.log("📦 Loaded cache:", cache.posted_ids.length, "items");
 
-// Format message
+// -----------------------------
+// FORMAT DEAL MESSAGE
+// -----------------------------
 function formatDeal(deal) {
+  const qualityTag =
+    deal.score >= 6
+      ? "🔥 HIGH QUALITY"
+      : deal.score >= 4
+      ? "⚡ GOOD DEAL"
+      : "🟡 NEW";
+
   return `
-🔥 *${deal.name}* — ${deal.discount}
+${qualityTag}
 
-${deal.description}
+🔥 *${deal.name}*
 
-💰 Now: ${deal.price}
-~~${deal.original_price}~~
+${deal.description || "AI tool"}
+
+💰 Price: ${deal.price || "N/A"}
 
 👉 ${deal.url}
 `;
 }
 
-// Determine which channels to post to
-function getChannelsForDeal(deal) {
+// -----------------------------
+// CHANNEL ROUTING LOGIC
+// -----------------------------
+function getChannels(deal) {
   const targets = [];
 
-  // AI deals → AI channel
-  if (deal.category && deal.category.startsWith("ai") && channels.ai) {
+  if (deal.category?.startsWith("ai") && channels.ai) {
     targets.push(channels.ai);
   }
 
-  // Future expansion
-  if (deal.category && deal.category.startsWith("saas") && channels.saas) {
+  if (deal.category?.startsWith("saas") && channels.saas) {
     targets.push(channels.saas);
+  }
+
+  if (channels.general) {
+    targets.push(channels.general);
   }
 
   return targets;
 }
 
+// -----------------------------
+// MAIN PIPELINE
+// -----------------------------
 async function run() {
-  const deals = await fetchDeals();
+  try {
+    let deals = await fetchDeals();
 
-  for (const deal of deals)
-    console.log("\n==============================");
-    console.log(`🔍 Processing deal: ${deal.name}`);
-    console.log(`🆔 Deal ID: ${deal.id}`);
+    console.log(`📡 Raw deals fetched: ${deals.length}`);
 
-    // Skip already posted
-    if (cache.posted_ids.includes(deal.id)) {
-      console.log("⏭️ Skipping (already posted)");
-      continue;
-    }
+    // -----------------------------
+    // FILTERING LAYER
+    // -----------------------------
+    deals = deals
+      .filter((d) => d && d.name)
+      .filter((d) => d.score >= 3)
+      .filter((d) => !cache.posted_ids.includes(d.id));
 
-    const message = formatDeal(deal);
-    const targetChannels = getChannelsForDeal(deal);
+    console.log(`🔥 After filtering: ${deals.length}`);
 
-    console.log("📤 Target channels:", targetChannels);
-    console.log("📝 Message preview:\n", message);
+    // Sort by quality (best first)
+    deals.sort((a, b) => b.score - a.score);
 
-    if (targetChannels.length === 0) {
-      console.log("⚠️ No channels matched — skipping");
-      continue;
-    }
+    // -----------------------------
+    // PROCESS EACH DEAL
+    // -----------------------------
+    for (const deal of deals) {
+      console.log("\n==============================");
+      console.log(`🔍 Processing: ${deal.name}`);
+      console.log(`🆔 ID: ${deal.id}`);
+      console.log(`⭐ Score: ${deal.score}`);
 
-    for (const channel of targetChannels) {
-      try {
-        const res = await sendMessage(token, channel, message);
-        console.log(`📩 Response status: ${res.status}`);
-        console.log(`📩 Response body: ${res.body}`);
-        console.log(`✅ Posted to ${channel}`);
-      } catch (err) {
-        console.error(`❌ Failed posting to ${channel}:`, err);
+      const message = formatDeal(deal);
+      const targetChannels = getChannels(deal);
+
+      console.log("📤 Channels:", targetChannels);
+
+      if (!targetChannels.length) {
+        console.log("⚠️ No channels matched — skipping");
+        continue;
       }
+
+      for (const channel of targetChannels) {
+        try {
+          console.log(`➡️ Sending to ${channel}...`);
+
+          const res = await sendMessage(token, channel, message);
+
+          console.log("📩 Telegram status:", res.status);
+          console.log("📩 Response:", res.body);
+        } catch (err) {
+          console.error("❌ Send failed:", err.message);
+        }
+      }
+
+      // Mark as posted
+      cache.posted_ids.push(deal.id);
+      console.log(`💾 Cached: ${deal.id}`);
     }
 
-    // Add to cache AFTER posting
-    cache.posted_ids.push(deal.id);
-    console.log(`💾 Cached deal: ${deal.id}`);
-  }
+    // -----------------------------
+    // SAVE CACHE
+    // -----------------------------
+    fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
 
-  // Save cache
-  fs.writeFileSync("./data/cache.json", JSON.stringify(cache, null, 2));
-  console.log("\n💾 Cache updated successfully");
+    console.log("\n✅ Pipeline complete");
+    console.log(`💾 Cache saved (${cache.posted_ids.length} items)`);
+  } catch (err) {
+    console.error("❌ Pipeline error:", err);
+  }
 }
 
+// Run
 run();
