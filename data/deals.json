@@ -2,12 +2,23 @@
   {
     "id": "notion-ai-001",
     "name": "Notion AI",
-    "description": "AI writing assistant inside Notion",
+    "description": "AI writing assistant inside Notion for notes and docs",
     "price": "$6/month",
     "original_price": "$10/month",
     "discount": "40% OFF",
-    "url": "https://your-affiliate-link.com",
+    "url": "https://example.com/notion-ai",
     "category": "ai-writing",
     "tags": ["writing", "productivity"]
+  },
+  {
+    "id": "midjourney-002",
+    "name": "Midjourney",
+    "description": "AI image generation tool for stunning visuals",
+    "price": "$8/month",
+    "original_price": "$12/month",
+    "discount": "33% OFF",
+    "url": "https://example.com/midjourney",
+    "category": "ai-image",
+    "tags": ["image", "design"]
   }
 ]
