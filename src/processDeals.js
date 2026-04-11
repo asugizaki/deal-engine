@@ -1,77 +1,77 @@
 const fs = require("fs");
-const https = require("https");
+const sendMessage = require("./sendMessage");
 
+// Load data
 const deals = JSON.parse(fs.readFileSync("./data/deals.json"));
 const cache = JSON.parse(fs.readFileSync("./data/cache.json"));
 
+// Env
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
-// Multi-channel support
-const channel = process.env.TELEGRAM_AI;
-
-// Helper to send message
-function sendMessage(chatId, message) {
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify({
-      chat_id: chatId,
-      text: message,
-      parse_mode: "Markdown"
-    });
-
-    const options = {
-      hostname: "api.telegram.org",
-      path: `/bot${token}/sendMessage`,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": data.length
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      resolve(res.statusCode);
-    });
-
-    req.on("error", reject);
-    req.write(data);
-    req.end();
-  });
-}
+// Multi-channel config (future-proof)
+const channels = {
+  ai: process.env.TELEGRAM_AI,
+  saas: process.env.TELEGRAM_SAAS,
+  general: process.env.TELEGRAM_GENERAL
+};
 
 // Format message
 function formatDeal(deal) {
   return `
-🔥 *${deal.title}*
+🔥 *${deal.name}* — ${deal.discount}
 
-💰 ${deal.price}
+${deal.description}
+
+💰 Now: ${deal.price}
+~~${deal.original_price}~~
 
 👉 ${deal.url}
 `;
 }
 
-async function run() {
-  for (const deal of deals) {
-    // Skip if already posted
-    if (cache.posted.includes(deal.id)) continue;
+// Determine which channels to post to
+function getChannelsForDeal(deal) {
+  const targets = [];
 
-    const message = formatDeal(deal);
-
-    // Always post to general
-    if (channels.general) {
-      await sendMessage(channels.general, message);
-    }
-
-    // Post to niche channel if exists
-    if (channels[deal.category]) {
-      await sendMessage(channels[deal.category], message);
-    }
-
-    console.log(`Posted: ${deal.title}`);
-
-    cache.posted.push(deal.id);
+  // AI deals → AI channel
+  if (deal.category.startsWith("ai") && channels.ai) {
+    targets.push(channels.ai);
   }
 
-  // Save updated cache
+  // Future:
+  if (deal.category.startsWith("saas") && channels.saas) {
+    targets.push(channels.saas);
+  }
+
+  // Optional general channel (disabled unless set)
+  if (channels.general) {
+    targets.push(channels.general);
+  }
+
+  return targets;
+}
+
+async function run() {
+  for (const deal of deals) {
+    // Skip already posted
+    if (cache.posted_ids.includes(deal.id)) continue;
+
+    const message = formatDeal(deal);
+    const targetChannels = getChannelsForDeal(deal);
+
+    for (const channel of targetChannels) {
+      try {
+        await sendMessage(token, channel, message);
+        console.log(`Posted to ${channel}: ${deal.name}`);
+      } catch (err) {
+        console.error(`Failed posting ${deal.name}:`, err);
+      }
+    }
+
+    cache.posted_ids.push(deal.id);
+  }
+
+  // Save cache
   fs.writeFileSync("./data/cache.json", JSON.stringify(cache, null, 2));
 }
 
