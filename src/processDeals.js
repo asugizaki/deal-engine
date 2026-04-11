@@ -1,4 +1,4 @@
-const applyAffiliate = require("./affiliates");
+const applyAffiliate = require("./affiliateEngine");
 const fs = require("fs");
 const fetchDeals = require("./fetchDeals");
 const sendMessage = require("./sendMessage");
@@ -92,8 +92,10 @@ async function run() {
     // PROCESS EACH DEAL
     // -----------------------------
     for (let deal of deals) {
-      // APPLY AFFILIATE ENRICHMENT
       deal = applyAffiliate(deal);
+    
+      console.log("🏷️ Detected brand:", deal.brand);
+      console.log("🔗 Affiliate URL:", deal.url);
     
       console.log("🔗 Affiliate URL:", deal.url);
       console.log("\n==============================");
