@@ -1,47 +1,71 @@
-const https = require("https");
+const fetch = require("node-fetch");
 
-function sendMessage(token, chatId, message) {
-  return new Promise((resolve, reject) => {
-    console.log(`➡️ Sending message to: ${chatId}`);
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
-    const data = JSON.stringify({
-      chat_id: chatId,
-      text: message,
-      parse_mode: "HTML"
-    });
+// ----------------------
+// VALIDATE CHAT ID
+// ----------------------
+function isValidChatId(chatId) {
+  if (!chatId) return false;
 
-    const options = {
-      hostname: "api.telegram.org",
-      path: `/bot${token}/sendMessage`,
+  // valid formats:
+  // -1001234567890 (channel)
+  // 123456789 (user)
+  return /^-?\d+$/.test(String(chatId));
+}
+
+// ----------------------
+// SEND MESSAGE
+// ----------------------
+async function sendMessage(chatId, text) {
+  try {
+    // 🚨 HARD GUARD (prevents your exact bug)
+    if (!isValidChatId(chatId)) {
+      console.error("❌ INVALID CHAT ID:", chatId);
+      console.error("❌ THIS LOOKS LIKE YOU PASSED MESSAGE INSTEAD OF CHAT ID");
+      return { status: 400, body: "Invalid chat_id" };
+    }
+
+    if (!text || typeof text !== "string") {
+      console.error("❌ INVALID MESSAGE TEXT");
+      return { status: 400, body: "Invalid text" };
+    }
+
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+
+    console.log("➡️ Sending to chat_id:", chatId);
+
+    const res = await fetch(url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "Content-Length": data.length
-      }
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: "HTML",
+        disable_web_page_preview: false
+      })
+    });
+
+    const data = await res.text();
+
+    console.log("📩 Telegram response status:", res.status);
+    console.log("📩 Telegram response body:", data);
+
+    return {
+      status: res.status,
+      body: data
     };
 
-    const req = https.request(options, (res) => {
-      let body = "";
+  } catch (err) {
+    console.error("❌ SEND ERROR:", err.message);
 
-      res.on("data", (chunk) => {
-        body += chunk;
-      });
-
-      res.on("end", () => {
-        console.log(`📩 Telegram response status: ${res.statusCode}`);
-        console.log(`📩 Telegram response body: ${body}`);
-        resolve({ status: res.statusCode, body });
-      });
-    });
-
-    req.on("error", (error) => {
-      console.error("❌ Request error:", error);
-      reject(error);
-    });
-
-    req.write(data);
-    req.end();
-  });
+    return {
+      status: 500,
+      body: err.message
+    };
+  }
 }
 
 module.exports = sendMessage;
