@@ -1,5 +1,11 @@
+const fs = require("fs");
+const path = require("path");
+const Parser = require("rss-parser");
+
 const sendMessage = require("./sendMessage");
 const scoreDeal = require("./aiScorer");
+
+const parser = new Parser();
 
 // ----------------------
 // CONFIG
@@ -9,55 +15,80 @@ const CHANNELS = {
   saas: process.env.TELEGRAM_SAAS
 };
 
+const CACHE_FILE = path.join(__dirname, "../cache.json");
 const MIN_SCORE = 2;
 
 // ----------------------
-// CLEAN TEXT (INLINE)
+// CLEAN TEXT
 // ----------------------
 function cleanText(text = "") {
   return String(text)
-    // remove zero-width characters
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
-
-    // normalize non-breaking spaces
     .replace(/\u00A0/g, " ")
-
-    // remove weird indentation before line breaks
     .replace(/[ \t]+\n/g, "\n")
-
-    // collapse multiple line breaks
     .replace(/\n{3,}/g, "\n\n")
-
-    // remove control characters
     .replace(/[\x00-\x1F\x7F]/g, "")
-
     .trim();
 }
 
 // ----------------------
-// SLEEP UTILITY (CRITICAL FOR TELEGRAM)
+// SLEEP (RATE LIMIT FIX)
 // ----------------------
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ----------------------
-// SAFE TELEGRAM SENDER WITH RETRY
+// CACHE HANDLING
+// ----------------------
+function loadCache() {
+  try {
+    if (!fs.existsSync(CACHE_FILE)) return [];
+    return JSON.parse(fs.readFileSync(CACHE_FILE));
+  } catch {
+    return [];
+  }
+}
+
+function saveCache(cache) {
+  fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+}
+
+// ----------------------
+// FETCH DEALS (REAL SOURCE)
+// ----------------------
+async function getDeals() {
+  console.log("🌐 Fetching deals...");
+
+  const feed = await parser.parseURL("https://www.producthunt.com/feed");
+
+  const deals = feed.items.slice(0, 20).map(item => ({
+    name: item.title,
+    description: item.contentSnippet || "",
+    url: item.link,
+    category: "ai" // default for now
+  }));
+
+  console.log(`📦 Fetched ${deals.length} deals`);
+
+  return deals;
+}
+
+// ----------------------
+// TELEGRAM SEND WITH RETRY
 // ----------------------
 async function sendWithRetry(chatId, message, retries = 2) {
   for (let i = 0; i <= retries; i++) {
     try {
       const res = await sendMessage(chatId, message);
 
-      if (res?.status === 200 || res?.ok) {
-        return res;
-      }
+      if (res?.status === 200 || res?.ok) return true;
 
-      throw new Error(`Telegram failed: ${res?.status}`);
+      throw new Error("Bad response");
     } catch (err) {
-      console.log(`⚠️ Send attempt ${i + 1} failed`);
+      console.log(`⚠️ Attempt ${i + 1} failed`);
 
-      if (i === retries) return null;
+      if (i === retries) return false;
 
       await sleep(800 + Math.random() * 500);
     }
@@ -65,11 +96,11 @@ async function sendWithRetry(chatId, message, retries = 2) {
 }
 
 // ----------------------
-// FORMAT MESSAGE (HTML SAFE)
+// FORMAT MESSAGE
 // ----------------------
 function formatDeal(deal) {
   const name = cleanText(deal.name);
-  const desc = cleanText(deal.description || "");
+  const desc = cleanText(deal.description);
 
   return `
 🔥 🟡 TRENDING
@@ -89,23 +120,26 @@ ${desc ? desc.slice(0, 120) : "AI / SaaS tool"}
 }
 
 // ----------------------
-// MAIN PIPELINE
+// MAIN PROCESS
 // ----------------------
-async function processDeals(deals = []) {
+async function processDeals() {
   console.log("🚀 Starting Deal Engine...");
-  console.log("📡 Channels:", {
-    ai: CHANNELS.ai ? "***" : "MISSING",
-    saas: CHANNELS.saas ? "***" : "MISSING"
-  });
+
+  const cache = loadCache();
+  console.log("💾 Cached deals:", cache.length);
+
+  const deals = await getDeals();
 
   let sent = 0;
   let failed = 0;
 
   for (const rawDeal of deals) {
     try {
-      // ----------------------
-      // SCORE DEAL
-      // ----------------------
+      if (cache.includes(rawDeal.url)) {
+        console.log("⏭️ Skipping cached:", rawDeal.url);
+        continue;
+      }
+
       const deal = scoreDeal(rawDeal);
 
       console.log("\n==============================");
@@ -122,58 +156,67 @@ async function processDeals(deals = []) {
       // ----------------------
       const channels = [];
 
-      if (deal.category === "ai" || deal.name?.toLowerCase().includes("ai")) {
+      if (deal.name.toLowerCase().includes("ai")) {
         if (CHANNELS.ai) channels.push(CHANNELS.ai);
       } else {
         if (CHANNELS.saas) channels.push(CHANNELS.saas);
       }
 
-      console.log("📤 Channels:", channels);
-
       if (!channels.length) {
-        console.log("⚠️ No channels configured");
+        console.log("⚠️ No channels");
         continue;
       }
 
-      // ----------------------
-      // FORMAT MESSAGE
-      // ----------------------
       const message = cleanText(formatDeal(deal));
 
-      console.log("🧪 RAW LENGTH:", message.length);
-      console.log("🧪 SAMPLE:", message.slice(0, 120));
+      console.log("🧪 LENGTH:", message.length);
+      console.log("🧪 SAMPLE:", message.slice(0, 100));
 
       // ----------------------
-      // SEND TO TELEGRAM
+      // SEND
       // ----------------------
       for (const channel of channels) {
         console.log("➡️ Sending to:", channel);
 
-        const result = await sendWithRetry(channel, message);
+        const ok = await sendWithRetry(channel, message);
 
-        if (result) {
-          console.log("✅ Sent successfully");
+        if (ok) {
+          console.log("✅ Sent");
           sent++;
         } else {
-          console.log("❌ Failed to send");
+          console.log("❌ Failed");
           failed++;
         }
 
-        // ----------------------
-        // TELEGRAM RATE LIMIT SAFETY
-        // ----------------------
+        // 🚨 CRITICAL FIX
         await sleep(800 + Math.random() * 400);
       }
+
+      // ----------------------
+      // UPDATE CACHE
+      // ----------------------
+      cache.push(rawDeal.url);
+
     } catch (err) {
-      console.log("❌ Deal processing error:", err.message);
+      console.log("❌ Error:", err.message);
       failed++;
     }
   }
 
+  saveCache(cache);
+
   console.log("\n==============================");
-  console.log("✅ PIPELINE COMPLETE");
+  console.log("✅ DONE");
   console.log("📤 Sent:", sent);
   console.log("❌ Failed:", failed);
 }
 
-module.exports = processDeals;
+// ----------------------
+// RUN SCRIPT
+// ----------------------
+if (require.main === module) {
+  processDeals().catch(err => {
+    console.error("❌ Fatal:", err);
+    process.exit(1);
+  });
+}
