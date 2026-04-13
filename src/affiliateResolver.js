@@ -1,36 +1,31 @@
+const AFFILIATE_DB = {
+  "notion": {
+    network: "partnerstack",
+    link: "https://partnerstack.com/notion?ref=YOUR_ID"
+  },
+  "jasper": {
+    network: "impact",
+    link: "https://impact.com/jasper?ref=YOUR_ID"
+  }
+};
+
 function resolveAffiliate(deal) {
-  const name = (deal.name + " " + deal.description).toLowerCase();
+  const name = deal.name.toLowerCase();
 
-  // -------------------------
-  // Direct SaaS affiliates
-  // -------------------------
-  if (name.includes("notion")) {
-    return {
-      ...deal,
-      monetizedUrl: "https://notion.so?via=dealradar"
-    };
+  for (const key of Object.keys(AFFILIATE_DB)) {
+    if (name.includes(key)) {
+      return {
+        hasAffiliate: true,
+        affiliateNetwork: AFFILIATE_DB[key].network,
+        affiliateLink: AFFILIATE_DB[key].link
+      };
+    }
   }
 
-  if (name.includes("canva")) {
-    return {
-      ...deal,
-      monetizedUrl: "https://canva.com/?ref=dealradar"
-    };
-  }
-
-  if (name.includes("jasper")) {
-    return {
-      ...deal,
-      monetizedUrl: "https://www.jasper.ai/?fpr=dealradar"
-    };
-  }
-
-  // -------------------------
-  // If no affiliate exists
-  // -------------------------
   return {
-    ...deal,
-    monetizedUrl: null
+    hasAffiliate: false,
+    affiliateNetwork: null,
+    affiliateLink: deal.url
   };
 }
 
