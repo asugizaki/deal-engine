@@ -1,20 +1,21 @@
-export function formatMessage(deal) {
-  const title = deal.name || "Untitled";
-  const description = deal.tagline || deal.description || "";
+export function formatMessage(deal, affiliateLink) {
+  const name = deal.name || "Untitled Tool";
+  const description =
+    deal.description ||
+    "A tool designed to improve productivity and workflows.";
 
-  const link = deal.affiliateLink || deal.url;
-
-  const whyItMatters = deal.aiInsight ||
-    "Useful tool for improving productivity and workflow efficiency.";
+  const link = affiliateLink;
 
   return `
-🔥 <b>${title}</b>
+🔥 <b>${name}</b>
 
-✨ <b>Why this matters:</b>
-${whyItMatters}
-
-🧠 <b>What it does:</b>
+✨ <b>What it does:</b>
 ${description}
+
+💡 <b>Why people use it:</b>
+- Saves time
+- Improves workflow
+- Easy to get started
 
 👉 <a href="${link}">Try it here</a>
 `.trim();
