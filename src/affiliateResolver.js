@@ -1,16 +1,15 @@
 export function resolveAffiliateLink(product, affiliateDB = {}) {
   const name = (product.name || "").toLowerCase();
 
-  // 1. exact match
-  if (affiliateDB[name]?.url) {
-    return affiliateDB[name].url;
-  }
-
-  // 2. fuzzy match (contains)
   for (const key in affiliateDB) {
-    if (name.includes(key)) {
-      const url = affiliateDB[key]?.url;
-      if (isValidUrl(url)) return url;
+    const entry = affiliateDB[key];
+
+    const keywords = entry.keywords || [];
+
+    if (keywords.some(k => name.includes(k))) {
+      if (isValidUrl(entry.url)) {
+        return entry.url;
+      }
     }
   }
 
