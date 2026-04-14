@@ -1,87 +1,81 @@
-import { syncAffiliatePrograms } from "./sync/affiliateSync.js";
-import { findAffiliate } from "./affiliateResolver.js";
-import { sendMessage } from "./sendMessage.js";
+const { sendMessage } = require("./sendMessage");
+const { formatTelegramPost } = require("./formatTelegramPost");
 
-// ========================
-// MOCK OR REAL DEAL SOURCE
-// ========================
-async function fetchDeals() {
-  return [
-    { name: "Notion AI", url: "https://notion.so", source: "producthunt" },
-    { name: "Copy.ai", url: "https://copy.ai", source: "producthunt" },
-    { name: "Canva AI", url: "https://canva.com", source: "producthunt" }
-  ];
+// example channels
+const CHANNELS = {
+  ai: process.env.TELEGRAM_AI,
+  saas: process.env.TELEGRAM_SAAS,
+};
+
+// 🔥 mock affiliate resolver (replace later)
+function resolveAffiliateLink(deal) {
+  if (!deal?.url) return null;
+
+  // later: CJ / Impact / PartnerStack mapping
+  return deal.url + "?ref=pochify";
 }
 
-// ========================
-// SCORING (simple fallback so pipeline works)
-// ========================
+// 🧠 mock scorer (you already have better one, plug it in later)
 function scoreDeal(deal) {
-  let score = 5;
+  let score = 0;
 
-  if (deal.name.toLowerCase().includes("ai")) score += 3;
-  if (deal.name.length < 10) score -= 1;
+  if (deal.name?.toLowerCase().includes("ai")) score += 3;
+  if (deal.description?.length > 50) score += 2;
+  if (deal.url) score += 1;
 
   return score;
 }
 
-// ========================
-// FORMAT MESSAGE
-// ========================
-function formatDeal(deal, affiliate) {
-  return `
-🔥 TRENDING
-🔥 <b>${deal.name}</b>
-
-📊 Score: ${deal.score}/10
-
-💰 Affiliate: ${affiliate?.affiliate?.name || "none"}
-
-👉 ${affiliate?.affiliate?.trackingUrl || deal.url}
-  `.trim();
+// 🧪 fake deals fallback (replace with ProductHunt fetch)
+function fetchDeals() {
+  return [
+    {
+      name: "Notion AI",
+      description: "AI writing assistant inside Notion that helps you draft, summarize and automate content.",
+      url: "https://www.notion.so/product/ai",
+      audience: "Founders, students, knowledge workers",
+      benefits: [
+        "Write faster with AI inside docs",
+        "Summarize long content instantly",
+        "Boost productivity in workflows",
+      ],
+    },
+  ];
 }
 
-// ========================
-// MAIN PIPELINE
-// ========================
 async function run() {
-  console.log("🚀 Affiliate-first Deal Engine Starting...");
+  console.log("🚀 Deal Engine Starting...");
 
-  // 1. sync affiliate programs
-  await syncAffiliatePrograms();
+  const deals = fetchDeals();
+  console.log("📦 Deals fetched:", deals.length);
 
-  // 2. fetch deals
-  const deals = await fetchDeals();
-
-  console.log(`📦 Deals fetched: ${deals.length}`);
-
-  // 3. process each deal
   for (const deal of deals) {
-    const affiliate = findAffiliate(deal.name);
-    deal.score = scoreDeal(deal);
-
-    const message = formatDeal(deal, affiliate);
+    const score = scoreDeal(deal);
 
     console.log("\n🔍 Processing:", deal.name);
-    console.log("🧪 Message preview:", message.slice(0, 120));
+    console.log("⭐ Score:", score);
+
+    const affiliateLink = resolveAffiliateLink(deal);
+    const message = formatTelegramPost(deal, affiliateLink);
+
+    const chatId = CHANNELS.ai; // route later by category
+
+    if (!chatId) {
+      console.log("❌ Missing channel chatId");
+      continue;
+    }
+
+    console.log("➡️ Sending to:", chatId);
 
     try {
-      const success = await sendMessage(message);
-
-      if (!success) {
-        console.log("❌ Telegram send failed");
-      } else {
-        console.log("✅ Sent");
-      }
+      await sendMessage(chatId, message);
+      console.log("✅ Sent");
     } catch (err) {
-      console.log("❌ Error sending:", err.message);
+      console.log("❌ Failed:", err.message);
     }
   }
 
-  console.log("🏁 Pipeline complete");
+  console.log("\n✅ Done");
 }
 
-// ========================
-// EXECUTE
-// ========================
 run();
