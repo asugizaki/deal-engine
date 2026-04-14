@@ -1,22 +1,18 @@
+import { buildTrackingLink } from "./linkRouter.js";
+
 export function formatMessage(deal, affiliateLink) {
   const name = deal.name || "Untitled Tool";
 
   const description =
     deal.description ||
-    "A useful AI/SaaS tool designed to improve productivity and workflows.";
+    "A powerful tool to improve productivity.";
 
-  const link = affiliateLink || deal.url;
+  const link = affiliateLink || buildTrackingLink(deal);
 
   return `
 🔥 <b>${name}</b>
 
-✨ <b>What it does:</b>
-${description}
-
-💡 <b>Why people use it:</b>
-- Saves time
-- Improves productivity
-- Easy to integrate into workflow
+✨ ${description}
 
 👉 <a href="${link}">Try it here</a>
 `.trim();
