@@ -1,81 +1,97 @@
-const { sendMessage } = require("./sendMessage");
-const { formatTelegramPost } = require("./formatTelegramPost");
+import { sendMessage } from "./sendMessage.js";
+import { formatMessage } from "./formatMessage.js";
+import { cleanText } from "./cleanText.js";
+import fs from "fs";
 
-// example channels
-const CHANNELS = {
-  ai: process.env.TELEGRAM_AI,
-  saas: process.env.TELEGRAM_SAAS,
-};
+const CACHE_FILE = "./cache.json";
 
-// 🔥 mock affiliate resolver (replace later)
-function resolveAffiliateLink(deal) {
-  if (!deal?.url) return null;
-
-  // later: CJ / Impact / PartnerStack mapping
-  return deal.url + "?ref=pochify";
+function loadCache() {
+  if (!fs.existsSync(CACHE_FILE)) return new Set();
+  return new Set(JSON.parse(fs.readFileSync(CACHE_FILE)));
 }
 
-// 🧠 mock scorer (you already have better one, plug it in later)
+function saveCache(cache) {
+  fs.writeFileSync(CACHE_FILE, JSON.stringify([...cache], null, 2));
+}
+
+function isValidDeal(deal) {
+  return deal?.name && deal?.url;
+}
+
 function scoreDeal(deal) {
   let score = 0;
 
-  if (deal.name?.toLowerCase().includes("ai")) score += 3;
-  if (deal.description?.length > 50) score += 2;
-  if (deal.url) score += 1;
+  if (deal.name?.length > 3) score += 2;
+  if (deal.tagline?.length > 10) score += 2;
+  if (deal.affiliateLink) score += 4;
+  if (deal.trending) score += 2;
 
   return score;
 }
 
-// 🧪 fake deals fallback (replace with ProductHunt fetch)
-function fetchDeals() {
+// fake fetch placeholder (replace with your ProductHunt / affiliate sync later)
+async function fetchDeals() {
   return [
     {
-      name: "Notion AI",
-      description: "AI writing assistant inside Notion that helps you draft, summarize and automate content.",
-      url: "https://www.notion.so/product/ai",
-      audience: "Founders, students, knowledge workers",
-      benefits: [
-        "Write faster with AI inside docs",
-        "Summarize long content instantly",
-        "Boost productivity in workflows",
-      ],
+      name: "AI Resume Builder",
+      tagline: "Create job-winning resumes in seconds",
+      url: "https://example.com/resume",
+      affiliateLink: "https://example.com/resume?ref=pochify",
+      trending: true,
+      aiInsight: "High conversion potential for job seekers."
     },
+    {
+      name: "Notion AI Helper",
+      tagline: "Automate writing inside Notion",
+      url: "https://example.com/notion",
+      affiliateLink: null,
+      trending: true,
+      aiInsight: "Strong SaaS adoption and recurring usage."
+    }
   ];
 }
 
-async function run() {
+export async function run() {
   console.log("🚀 Deal Engine Starting...");
 
-  const deals = fetchDeals();
-  console.log("📦 Deals fetched:", deals.length);
+  const cache = loadCache();
+  const deals = await fetchDeals();
 
-  for (const deal of deals) {
+  console.log(`📦 Fetched deals: ${deals.length}`);
+
+  for (const raw of deals) {
+    const deal = {
+      ...raw,
+      name: cleanText(raw.name),
+      tagline: cleanText(raw.tagline)
+    };
+
+    if (!isValidDeal(deal)) continue;
+    if (cache.has(deal.url)) continue;
+
     const score = scoreDeal(deal);
 
-    console.log("\n🔍 Processing:", deal.name);
-    console.log("⭐ Score:", score);
+    console.log(`🔍 Processing: ${deal.name}`);
+    console.log(`⭐ Score: ${score}`);
 
-    const affiliateLink = resolveAffiliateLink(deal);
-    const message = formatTelegramPost(deal, affiliateLink);
+    // filter low quality
+    if (score < 3) continue;
 
-    const chatId = CHANNELS.ai; // route later by category
-
-    if (!chatId) {
-      console.log("❌ Missing channel chatId");
-      continue;
-    }
-
-    console.log("➡️ Sending to:", chatId);
+    const message = formatMessage(deal);
 
     try {
-      await sendMessage(chatId, message);
-      console.log("✅ Sent");
+      await sendMessage(process.env.TELEGRAM_AI, message);
+
+      cache.add(deal.url);
+      saveCache(cache);
+
+      console.log(`✅ Sent: ${deal.name}`);
     } catch (err) {
-      console.log("❌ Failed:", err.message);
+      console.error(`❌ Failed: ${deal.name}`, err.message);
     }
   }
 
-  console.log("\n✅ Done");
+  console.log("🏁 Done");
 }
 
 run();
