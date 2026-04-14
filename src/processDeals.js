@@ -1,93 +1,78 @@
 import { sendMessage } from "./sendMessage.js";
 import { formatMessage } from "./formatMessage.js";
-import { cleanText } from "./cleanText.js";
-import fs from "fs";
+import { resolveAffiliateLink } from "./affiliateResolver.js";
 
-const CACHE_FILE = "./cache.json";
+const CHANNELS = {
+  ai: process.env.TELEGRAM_AI,
+  saas: process.env.TELEGRAM_SAAS,
+};
 
-function loadCache() {
-  if (!fs.existsSync(CACHE_FILE)) return new Set();
-  return new Set(JSON.parse(fs.readFileSync(CACHE_FILE)));
-}
+// mock affiliate DB (replace with CJ / Impact sync later)
+const affiliateDB = {
+  notion: {
+    url: "https://affiliate.notion.so/ref123",
+  },
+};
 
-function saveCache(cache) {
-  fs.writeFileSync(CACHE_FILE, JSON.stringify([...cache], null, 2));
+function scoreDeal(deal) {
+  let score = 0;
+
+  if (deal.name?.length > 3) score += 2;
+  if (deal.description?.length > 20) score += 2;
+  if (deal.trending) score += 2;
+
+  return score;
 }
 
 function isValidDeal(deal) {
   return deal?.name && deal?.url;
 }
 
-function scoreDeal(deal) {
-  let score = 0;
-
-  if (deal.name?.length > 3) score += 2;
-  if (deal.tagline?.length > 10) score += 2;
-  if (deal.affiliateLink) score += 4;
-  if (deal.trending) score += 2;
-
-  return score;
-}
-
-// fake fetch placeholder (replace with your ProductHunt / affiliate sync later)
-async function fetchDeals() {
+function fetchDeals() {
   return [
     {
-      name: "AI Resume Builder",
-      tagline: "Create job-winning resumes in seconds",
-      url: "https://example.com/resume",
-      affiliateLink: "https://example.com/resume?ref=pochify",
+      name: "Notion AI",
+      description: "AI writing assistant inside Notion",
+      url: "https://example.com/notion?", // ❌ will be ignored unless fixed affiliate exists
       trending: true,
-      aiInsight: "High conversion potential for job seekers."
     },
     {
-      name: "Notion AI Helper",
-      tagline: "Automate writing inside Notion",
-      url: "https://example.com/notion",
-      affiliateLink: null,
+      name: "ChatGPT Tool",
+      description: "Helps automate workflows with AI",
+      url: "https://example.com/chatgpt",
       trending: true,
-      aiInsight: "Strong SaaS adoption and recurring usage."
-    }
+    },
   ];
 }
 
 export async function run() {
-  console.log("🚀 Deal Engine Starting...");
+  console.log("🚀 Affiliate Engine Starting...");
 
-  const cache = loadCache();
-  const deals = await fetchDeals();
+  const deals = fetchDeals();
 
-  console.log(`📦 Fetched deals: ${deals.length}`);
-
-  for (const raw of deals) {
-    const deal = {
-      ...raw,
-      name: cleanText(raw.name),
-      tagline: cleanText(raw.tagline)
-    };
-
+  for (const deal of deals) {
     if (!isValidDeal(deal)) continue;
-    if (cache.has(deal.url)) continue;
 
     const score = scoreDeal(deal);
 
-    console.log(`🔍 Processing: ${deal.name}`);
-    console.log(`⭐ Score: ${score}`);
+    console.log(`🔍 ${deal.name} | Score: ${score}`);
 
-    // filter low quality
-    if (score < 3) continue;
+    // 🧠 resolve affiliate
+    const affiliateLink = resolveAffiliateLink(deal, affiliateDB);
 
-    const message = formatMessage(deal);
+    // 🚨 HARD RULE: skip if no affiliate link
+    if (!affiliateLink) {
+      console.log("🚫 Skipped (no affiliate link):", deal.name);
+      continue;
+    }
+
+    const message = formatMessage(deal, affiliateLink);
 
     try {
-      await sendMessage(process.env.TELEGRAM_AI, message);
-
-      cache.add(deal.url);
-      saveCache(cache);
-
-      console.log(`✅ Sent: ${deal.name}`);
+      await sendMessage(CHANNELS.ai, message);
+      console.log("✅ Sent:", deal.name);
     } catch (err) {
-      console.error(`❌ Failed: ${deal.name}`, err.message);
+      console.log("❌ Failed:", deal.name, err.message);
     }
   }
 
