@@ -1,21 +1,25 @@
 export function resolveAffiliateLink(product, affiliateDB = {}) {
-  const key = (product.name || "").toLowerCase();
+  const name = (product.name || "").toLowerCase();
 
-  const affiliate = affiliateDB[key];
-
-  // ✅ If we have a real affiliate link, use it
-  if (affiliate?.url && isValidUrl(affiliate.url)) {
-    return affiliate.url;
+  // 1. exact match
+  if (affiliateDB[name]?.url) {
+    return affiliateDB[name].url;
   }
 
-  // ❌ DO NOT generate fake tracking URLs
+  // 2. fuzzy match (contains)
+  for (const key in affiliateDB) {
+    if (name.includes(key)) {
+      const url = affiliateDB[key]?.url;
+      if (isValidUrl(url)) return url;
+    }
+  }
+
   return null;
 }
 
 function isValidUrl(url) {
   try {
-    const u = new URL(url);
-    return u.protocol === "http:" || u.protocol === "https:";
+    return new URL(url).protocol.startsWith("http");
   } catch {
     return false;
   }
