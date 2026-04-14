@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Notion",
+    "url": "https://www.notion.so",
+    "network": "impact",
+    "category": "ai"
+  },
+  {
+    "name": "Jasper",
+    "url": "https://www.jasper.ai",
+    "network": "partnerstack",
+    "category": "ai"
+  },
+  {
+    "name": "Copy.ai",
+    "url": "https://www.copy.ai",
+    "network": "partnerstack",
+    "category": "ai"
+  },
+  {
+    "name": "Writesonic",
+    "url": "https://writesonic.com",
+    "network": "partnerstack",
+    "category": "ai"
+  },
+  {
+    "name": "Canva",
+    "url": "https://www.canva.com",
+    "network": "cj",
+    "category": "saas"
+  }
+]
