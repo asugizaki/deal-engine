@@ -1,84 +1,71 @@
-import { sendMessage } from "./sendMessage.js";
-import { formatMessage } from "./formatMessage.js";
-import { resolveAffiliateLink } from "./affiliateResolver.js";
+import fs from "fs";
 
-// 🧠 affiliate DB (replace later with CJ / Impact sync)
-const affiliateDB = {
-  notion: {
-    url: "https://affiliate.notion.so/ref123",
-    keywords: ["notion", "workspace", "docs"],
-  },
-  chatgpt: {
-    url: "https://your-affiliate-link.com/chatgpt",
-    keywords: ["chatgpt", "gpt", "openai"],
-  },
-};
+// =========================
+// CONFIG
+// =========================
 
-const CHANNELS = {
-  ai: process.env.TELEGRAM_AI,
-  saas: process.env.TELEGRAM_SAAS,
-};
+const BACKEND_URL = "https://go.pochify.com/api/deals";
 
-function scoreDeal(deal) {
-  let score = 0;
+// =========================
+// Helpers
+// =========================
 
-  if (deal.name?.length > 3) score += 2;
-  if (deal.description?.length > 20) score += 2;
-  if (deal.trending) score += 2;
-
-  return score;
+function slugify(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 }
 
-function fetchDeals() {
+// =========================
+// MOCK DEALS (replace with your real pipeline)
+// =========================
+
+function getDeals() {
   return [
     {
       name: "Notion AI",
       description: "AI writing assistant inside Notion",
-      url: "https://example.com/notion",
-      trending: true,
+      url: "https://notion.so",
     },
     {
-      name: "ChatGPT Tool",
-      description: "Automates workflows using GPT models",
-      url: "https://example.com/chatgpt",
-      trending: true,
-    },
-    {
-      name: "Random SaaS Tool",
-      description: "Some productivity tool",
-      url: "https://example.com/tool",
-      trending: false,
-    },
+      name: "Jasper AI",
+      description: "AI content generation platform",
+      url: "https://jasper.ai",
+    }
   ];
 }
 
-export async function run() {
-  console.log("🚀 Affiliate Engine Starting...");
+// =========================
+// MAIN
+// =========================
 
-  const deals = fetchDeals();
+async function run() {
+  console.log("🚀 Processing deals...");
 
-  for (const deal of deals) {
-    const score = scoreDeal(deal);
+  const rawDeals = getDeals();
 
-    console.log(`🔍 ${deal.name} | Score: ${score}`);
+  const deals = rawDeals.map(d => ({
+    ...d,
+    slug: slugify(d.name),
+    affiliateLink: null,
+    clicks: 0
+  }));
 
-    // 🚀 resolve affiliate
-    const affiliateLink = resolveAffiliateLink(deal, affiliateDB);
+  console.log(`📦 Built ${deals.length} deals`);
 
-    // 🟡 IMPORTANT: do NOT block if missing affiliate
-    if (!affiliateLink) {
-      console.log("⚠️ No affiliate link — sending organic traffic");
-    }
+  // Send to Railway
+  const res = await fetch(BACKEND_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(deals)
+  });
 
-    const message = formatMessage(deal, affiliateLink);
+  const data = await res.json();
 
-    try {
-      await sendMessage(CHANNELS.ai, message);
-      console.log("✅ Sent:", deal.name);
-    } catch (err) {
-      console.log("❌ Failed:", deal.name, err.message);
-    }
-  }
+  console.log("📡 Backend response:", data);
 
   console.log("🏁 Done");
 }
