@@ -1,85 +1,40 @@
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+import fetch from "node-fetch";
 
-// ----------------------
-// VALIDATE CHAT ID
-// ----------------------
-function isValidChatId(chatId) {
-  if (!chatId) return false;
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const CHAT_ID = process.env.TELEGRAM_AI; // or your channel id
 
-  // Valid formats:
-  // -100xxxxxxxxxx (channel)
-  // 123456789 (user)
-  return /^-?\d+$/.test(String(chatId));
-}
+export async function sendMessage(text) {
+  if (!TELEGRAM_TOKEN || !CHAT_ID) {
+    console.log("❌ Missing Telegram config");
+    return false;
+  }
 
-// ----------------------
-// CLEAN MESSAGE (extra safety)
-// ----------------------
-function sanitizeText(text = "") {
-  return String(text)
-    .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width chars
-    .replace(/\u00A0/g, " ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[\x00-\x1F\x7F]/g, "") // control chars
-    .trim();
-}
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
 
-// ----------------------
-// SEND MESSAGE
-// ----------------------
-async function sendMessage(chatId, text) {
+  const payload = {
+    chat_id: CHAT_ID,
+    text,
+    parse_mode: "HTML",
+    disable_web_page_preview: false
+  };
+
   try {
-    // 🚨 HARD GUARD (prevents swapped params bug)
-    if (!isValidChatId(chatId)) {
-      console.error("❌ INVALID CHAT ID:", chatId);
-      console.error("❌ Likely cause: parameters swapped (message passed as chatId)");
-      return { status: 400, body: "Invalid chat_id" };
-    }
-
-    if (!text || typeof text !== "string") {
-      console.error("❌ INVALID MESSAGE TEXT");
-      return { status: 400, body: "Invalid text" };
-    }
-
-    const cleanText = sanitizeText(text);
-
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-
-    console.log("➡️ Sending to chat_id:", chatId);
-    console.log("🧪 Message length:", cleanText.length);
-
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: cleanText,
-        parse_mode: "HTML",
-        disable_web_page_preview: false
-      })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
     });
 
-    const data = await res.text();
+    const data = await res.json();
 
-    console.log("📩 Telegram response status:", res.status);
-    console.log("📩 Telegram response body:", data);
+    if (!data.ok) {
+      console.log("❌ Telegram error:", data);
+      return false;
+    }
 
-    return {
-      status: res.status,
-      body: data
-    };
-
+    return true;
   } catch (err) {
-    console.error("❌ SEND ERROR:", err.message);
-
-    return {
-      status: 500,
-      body: err.message
-    };
+    console.log("❌ sendMessage failed:", err.message);
+    return false;
   }
 }
-
-module.exports = { sendMessage };
