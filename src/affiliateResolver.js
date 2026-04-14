@@ -1,5 +1,9 @@
-const fs = require("fs");
-const path = require("path");
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const DB_PATH = path.join(__dirname, "../data/affiliatePrograms.json");
 
@@ -12,7 +16,7 @@ function normalize(str = "") {
   return str.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function findAffiliate(dealName) {
+export function findAffiliate(dealName) {
   const db = loadDB();
   const dealKey = normalize(dealName);
 
@@ -28,9 +32,7 @@ function findAffiliate(dealName) {
       score += 10;
     }
 
-    // fuzzy overlap
-    const overlap = programKey.split("").filter(c => dealKey.includes(c)).length;
-    score += overlap;
+    score += programKey.split("").filter(c => dealKey.includes(c)).length;
 
     if (score > bestScore) {
       bestScore = score;
@@ -39,16 +41,8 @@ function findAffiliate(dealName) {
   }
 
   if (!bestMatch || bestScore < 5) {
-    return {
-      hasAffiliate: false,
-      affiliate: null
-    };
+    return { hasAffiliate: false, affiliate: null };
   }
 
-  return {
-    hasAffiliate: true,
-    affiliate: bestMatch
-  };
+  return { hasAffiliate: true, affiliate: bestMatch };
 }
-
-module.exports = { findAffiliate };
