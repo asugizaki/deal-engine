@@ -82,4 +82,4 @@ async function sendMessage(chatId, text) {
   }
 }
 
-module.exports = sendMessage;
+module.exports = { sendMessage };
