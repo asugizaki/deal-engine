@@ -1,7 +1,5 @@
-import fetch from "node-fetch";
-
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const CHAT_ID = process.env.TELEGRAM_AI; // or your channel id
+const CHAT_ID = process.env.TELEGRAM_AI;
 
 export async function sendMessage(text) {
   if (!TELEGRAM_TOKEN || !CHAT_ID) {
