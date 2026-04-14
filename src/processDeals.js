@@ -3,6 +3,7 @@ const path = require("path");
 
 const { scoreDeal } = require("./aiScorer");
 const { sendMessage } = require("./sendMessage");
+const { injectAffiliateLink } = require("./affiliateInjector");
 
 // -----------------------------
 // CONFIG
@@ -169,6 +170,9 @@ async function run() {
     // -----------------------------
     // BUILD MESSAGE
     // -----------------------------
+    // Inject affiliate link
+    scored.url = injectAffiliateLink(scored.url);
+    
     const message = buildMessage(scored);
 
     console.log("🧪 LENGTH:", message.length);
