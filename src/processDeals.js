@@ -1,137 +1,201 @@
 const fs = require("fs");
 const path = require("path");
 
-const { resolveAffiliate } = require("./affiliateResolver");
 const { scoreDeal } = require("./aiScorer");
-const sendMessage = require("./sendMessage");
+const { sendMessage } = require("./sendMessage");
 
-// ---------- CONFIG ----------
+// -----------------------------
+// CONFIG
+// -----------------------------
+const CACHE_FILE = path.join(__dirname, "../cache.json");
+
 const CHANNELS = {
   ai: process.env.TELEGRAM_AI,
   saas: process.env.TELEGRAM_SAAS
 };
 
-const CACHE_FILE = path.join(__dirname, "../cache/deals.json");
-const AFFILIATE_FILE = path.join(__dirname, "../data/affiliatePrograms.json");
+// -----------------------------
+// INLINE CLEAN TEXT (fix 400 errors)
+// -----------------------------
+function cleanText(text) {
+  return text
+    .replace(/\n\s+/g, "\n") // remove weird indent spacing
+    .replace(/[<>]/g, "") // remove unsafe HTML brackets
+    .replace(/\s+/g, " ") // normalize spaces
+    .trim();
+}
 
-// ---------- HELPERS ----------
-function loadJSON(file, fallback = []) {
+// -----------------------------
+// LOAD CACHE
+// -----------------------------
+function loadCache() {
   try {
-    return JSON.parse(fs.readFileSync(file));
+    if (!fs.existsSync(CACHE_FILE)) return [];
+    return JSON.parse(fs.readFileSync(CACHE_FILE));
   } catch {
-    return fallback;
+    return [];
   }
 }
 
-function saveJSON(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+// -----------------------------
+// SAVE CACHE
+// -----------------------------
+function saveCache(cache) {
+  fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
 }
 
-function isCached(cache, url) {
-  return cache.includes(url);
+// -----------------------------
+// AFFILIATE PROGRAM SOURCE
+// (edit later with real links from secrets)
+// -----------------------------
+function getAffiliatePrograms() {
+  return [
+    {
+      name: "Notion AI",
+      url: process.env.AFF_NOTION || "https://www.notion.so/product/ai",
+      description: "AI writing assistant inside Notion",
+      price: "$10/month",
+      hasAffiliate: true,
+      channel: "ai"
+    },
+    {
+      name: "Jasper AI",
+      url: process.env.AFF_JASPER || "https://www.jasper.ai",
+      description: "AI copywriting tool for marketing",
+      price: "$39/month",
+      hasAffiliate: true,
+      channel: "ai"
+    },
+    {
+      name: "Copy.ai",
+      url: process.env.AFF_COPYAI || "https://www.copy.ai",
+      description: "Generate marketing copy with AI",
+      price: "$36/month",
+      hasAffiliate: true,
+      channel: "ai"
+    },
+    {
+      name: "Writesonic",
+      url: process.env.AFF_WRITESONIC || "https://writesonic.com",
+      description: "AI content + chatbot platform",
+      price: "$20/month",
+      hasAffiliate: true,
+      channel: "ai"
+    },
+    {
+      name: "Canva Pro",
+      url: process.env.AFF_CANVA || "https://www.canva.com",
+      description: "Design platform with AI tools",
+      price: "$15/month",
+      hasAffiliate: true,
+      channel: "saas"
+    }
+  ];
 }
 
-function addToCache(cache, url) {
-  cache.push(url);
-  return cache;
+// -----------------------------
+// BUILD MESSAGE
+// -----------------------------
+function buildMessage(deal) {
+  return cleanText(`
+🔥 TRENDING
+
+🔥 ${deal.name}
+
+${deal.description}
+
+📊 Score: ${deal.score}/10
+
+💰 Affiliate: ${deal.hasAffiliate ? "Available" : "None"}
+
+💰 Price: ${deal.price || "N/A"}
+
+👉 ${deal.url}
+`);
 }
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+// -----------------------------
+// SEND WITH RETRY
+// -----------------------------
+async function sendWithRetry(chatId, message, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    const success = await sendMessage(chatId, message);
+
+    if (success) return true;
+
+    console.log(`⚠️ Retry ${i + 1} failed`);
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  return false;
 }
 
-// ---------- MAIN ----------
+// -----------------------------
+// MAIN PIPELINE
+// -----------------------------
 async function run() {
   console.log("🚀 Affiliate-first Deal Engine Starting...");
 
-  const cache = loadJSON(CACHE_FILE, []);
-  const programs = loadJSON(AFFILIATE_FILE, []);
+  const cache = loadCache();
+  console.log("💾 Cached deals:", cache.length);
 
-  console.log(`💾 Cached deals: ${cache.length}`);
-  console.log(`📦 Affiliate programs: ${programs.length}`);
+  const deals = getAffiliatePrograms();
+  console.log("📦 Affiliate programs:", deals.length);
 
-  let deals = [];
-
-  // ---------- BUILD DEALS FROM AFFILIATES ----------
-  for (const program of programs) {
-    deals.push({
-      id: program.name.toLowerCase().replace(/\s+/g, "-"),
-      name: program.name,
-      url: program.url,
-      category: program.category,
-      price: "Check site",
-      description: `Trending ${program.category} tool`
-    });
-  }
-
-  console.log(`📦 Built deals: ${deals.length}`);
-
-  // ---------- PROCESS ----------
   for (const deal of deals) {
-    if (isCached(cache, deal.url)) {
-      console.log(`⏭️ Skipping cached: ${deal.name}`);
+    if (cache.includes(deal.url)) {
+      console.log("⏭️ Skipping cached:", deal.name);
       continue;
     }
 
-    console.log(`\n🔍 Processing: ${deal.name}`);
+    console.log("\n🔍 Processing:", deal.name);
 
-    // Affiliate resolution
-    const enriched = resolveAffiliate(scored);
-    
-    // Score
+    // -----------------------------
+    // SCORE DEAL
+    // -----------------------------
     const scored = scoreDeal(deal);
 
-    console.log(`⭐ Score: ${enriched.score}`);
-    console.log(`🏷️ Affiliate: ${enriched.affiliateNetwork || "none"}`);
+    console.log("⭐ Score:", scored.score);
+    console.log("🧠 Breakdown:", scored.breakdown);
 
-    // FILTER: only send monetizable or high score
-    if (!enriched.hasAffiliate && enriched.score < 5) {
-      console.log("❌ Skipping (no monetization + low score)");
+    // -----------------------------
+    // FILTER LOW QUALITY
+    // -----------------------------
+    if (scored.score < 4) {
+      console.log("⛔ Skipped (low conversion)");
       continue;
     }
 
-    // ---------- BUILD MESSAGE ----------
-    const link = enriched.affiliateUrl || enriched.url;
+    // -----------------------------
+    // BUILD MESSAGE
+    // -----------------------------
+    const message = buildMessage(scored);
 
-    const message = `
-🔥 <b>${enriched.name}</b>
+    console.log("🧪 LENGTH:", message.length);
+    console.log("🧪 SAMPLE:", message.slice(0, 120));
 
-📊 Score: ${enriched.score}/10
+    const channelId = CHANNELS[deal.channel];
 
-💰 Affiliate: ${enriched.affiliateNetwork || "none"}
-
-💰 Price: ${enriched.price || "N/A"}
-
-👉 ${link}
-    `.trim();
-
-    // ---------- SEND ----------
-    const targetChannel = CHANNELS[enriched.category];
-
-    if (!targetChannel) {
-      console.log("⚠️ No channel match");
+    if (!channelId) {
+      console.log("⚠️ No channel configured for:", deal.channel);
       continue;
     }
 
-    console.log(`➡️ Sending to channel...`);
+    console.log("➡️ Sending to:", deal.channel);
 
-    try {
-      await sendMessage(targetChannel, message);
+    const sent = await sendWithRetry(channelId, message);
+
+    if (sent) {
       console.log("✅ Sent");
-
-      addToCache(cache, deal.url);
-      saveJSON(CACHE_FILE, cache);
-
-      // prevent Telegram spam errors
-      await sleep(1500);
-
-    } catch (err) {
-      console.log("❌ Send failed:", err.message);
+      cache.push(deal.url);
+    } else {
+      console.log("❌ Failed");
     }
   }
 
-  console.log("\n✅ Pipeline complete");
+  saveCache(cache);
+  console.log("\n💾 Cache updated:", cache.length);
 }
 
-// ---------- RUN ----------
+// -----------------------------
 run();
