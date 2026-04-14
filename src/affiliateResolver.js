@@ -1,74 +1,54 @@
-// src/affiliateResolver.js
+const fs = require("fs");
+const path = require("path");
 
-function resolveAffiliate(deal) {
-  const url = deal.url || "";
-  const name = (deal.name || "").toLowerCase();
+const DB_PATH = path.join(__dirname, "../data/affiliatePrograms.json");
 
-  const CJ_PID = process.env.CJ_PID;
-  const IMPACT_ID = process.env.IMPACT_ID;
-  const PARTNERSTACK_ID = process.env.PARTNERSTACK_ID;
+function loadDB() {
+  if (!fs.existsSync(DB_PATH)) return [];
+  return JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
+}
 
-  let affiliateUrl = url;
-  let network = null;
+function normalize(str = "") {
+  return str.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 
-  // --- CJ (Commission Junction) ---
-  if (CJ_PID && matchCJ(name, url)) {
-    affiliateUrl = `https://www.anrdoezrs.net/click-${CJ_PID}?url=${encodeURIComponent(url)}`;
-    network = "cj";
+function findAffiliate(dealName) {
+  const db = loadDB();
+  const dealKey = normalize(dealName);
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const program of db) {
+    const programKey = normalize(program.name);
+
+    let score = 0;
+
+    if (dealKey.includes(programKey) || programKey.includes(dealKey)) {
+      score += 10;
+    }
+
+    // fuzzy overlap
+    const overlap = programKey.split("").filter(c => dealKey.includes(c)).length;
+    score += overlap;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = program;
+    }
   }
 
-  // --- Impact ---
-  else if (IMPACT_ID && matchImpact(name, url)) {
-    affiliateUrl = `https://impact.com/t/${IMPACT_ID}?url=${encodeURIComponent(url)}`;
-    network = "impact";
-  }
-
-  // --- PartnerStack ---
-  else if (PARTNERSTACK_ID && matchPartnerStack(name, url)) {
-    affiliateUrl = `${url}?via=${PARTNERSTACK_ID}`;
-    network = "partnerstack";
+  if (!bestMatch || bestScore < 5) {
+    return {
+      hasAffiliate: false,
+      affiliate: null
+    };
   }
 
   return {
-    ...deal,
-    affiliateUrl,
-    affiliateNetwork: network,
-    hasAffiliate: !!network
+    hasAffiliate: true,
+    affiliate: bestMatch
   };
 }
 
-/**
- * Matching logic (expand over time)
- */
-
-function matchCJ(name, url) {
-  const brands = [
-    "grammarly",
-    "adobe",
-    "canva",
-    "shopify"
-  ];
-  return brands.some(b => name.includes(b) || url.includes(b));
-}
-
-function matchImpact(name, url) {
-  const brands = [
-    "notion",
-    "wise",
-    "airtable"
-  ];
-  return brands.some(b => name.includes(b) || url.includes(b));
-}
-
-function matchPartnerStack(name, url) {
-  const brands = [
-    "jasper",
-    "copy.ai",
-    "surfer",
-    "frase",
-    "writesonic"
-  ];
-  return brands.some(b => name.includes(b) || url.includes(b));
-}
-
-module.exports = { resolveAffiliate };
+module.exports = { findAffiliate };
