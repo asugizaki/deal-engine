@@ -1,222 +1,137 @@
 const fs = require("fs");
 const path = require("path");
-const Parser = require("rss-parser");
 
+const { resolveAffiliate } = require("./affiliateResolver");
+const { scoreDeal } = require("./aiScorer");
 const sendMessage = require("./sendMessage");
-const scoreDeal = require("./aiScorer");
 
-const parser = new Parser();
-
-// ----------------------
-// CONFIG
-// ----------------------
+// ---------- CONFIG ----------
 const CHANNELS = {
   ai: process.env.TELEGRAM_AI,
   saas: process.env.TELEGRAM_SAAS
 };
 
-const CACHE_FILE = path.join(__dirname, "../cache.json");
-const MIN_SCORE = 2;
+const CACHE_FILE = path.join(__dirname, "../cache/deals.json");
+const AFFILIATE_FILE = path.join(__dirname, "../data/affiliatePrograms.json");
 
-// ----------------------
-// CLEAN TEXT
-// ----------------------
-function cleanText(text = "") {
-  return String(text)
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\u00A0/g, " ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[\x00-\x1F\x7F]/g, "")
-    .trim();
+// ---------- HELPERS ----------
+function loadJSON(file, fallback = []) {
+  try {
+    return JSON.parse(fs.readFileSync(file));
+  } catch {
+    return fallback;
+  }
 }
 
-// ----------------------
-// SLEEP (RATE LIMIT FIX)
-// ----------------------
+function saveJSON(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+function isCached(cache, url) {
+  return cache.includes(url);
+}
+
+function addToCache(cache, url) {
+  cache.push(url);
+  return cache;
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ----------------------
-// CACHE HANDLING
-// ----------------------
-function loadCache() {
-  try {
-    if (!fs.existsSync(CACHE_FILE)) return [];
-    return JSON.parse(fs.readFileSync(CACHE_FILE));
-  } catch {
-    return [];
+// ---------- MAIN ----------
+async function run() {
+  console.log("🚀 Affiliate-first Deal Engine Starting...");
+
+  const cache = loadJSON(CACHE_FILE, []);
+  const programs = loadJSON(AFFILIATE_FILE, []);
+
+  console.log(`💾 Cached deals: ${cache.length}`);
+  console.log(`📦 Affiliate programs: ${programs.length}`);
+
+  let deals = [];
+
+  // ---------- BUILD DEALS FROM AFFILIATES ----------
+  for (const program of programs) {
+    deals.push({
+      id: program.name.toLowerCase().replace(/\s+/g, "-"),
+      name: program.name,
+      url: program.url,
+      category: program.category,
+      price: "Check site",
+      description: `Trending ${program.category} tool`
+    });
   }
-}
 
-function saveCache(cache) {
-  fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
-}
+  console.log(`📦 Built deals: ${deals.length}`);
 
-// ----------------------
-// FETCH DEALS (REAL SOURCE)
-// ----------------------
-async function getDeals() {
-  console.log("🌐 Fetching deals...");
-
-  const feed = await parser.parseURL("https://www.producthunt.com/feed");
-
-  const deals = feed.items.slice(0, 20).map(item => ({
-    name: item.title,
-    description: item.contentSnippet || "",
-    url: item.link,
-    category: "ai" // default for now
-  }));
-
-  console.log(`📦 Fetched ${deals.length} deals`);
-
-  return deals;
-}
-
-// ----------------------
-// TELEGRAM SEND WITH RETRY
-// ----------------------
-async function sendWithRetry(chatId, message, retries = 2) {
-  for (let i = 0; i <= retries; i++) {
-    try {
-      const res = await sendMessage(chatId, message);
-
-      if (res?.status === 200 || res?.ok) return true;
-
-      throw new Error("Bad response");
-    } catch (err) {
-      console.log(`⚠️ Attempt ${i + 1} failed`);
-
-      if (i === retries) return false;
-
-      await sleep(800 + Math.random() * 500);
+  // ---------- PROCESS ----------
+  for (const deal of deals) {
+    if (isCached(cache, deal.url)) {
+      console.log(`⏭️ Skipping cached: ${deal.name}`);
+      continue;
     }
-  }
-}
 
-// ----------------------
-// FORMAT MESSAGE
-// ----------------------
-function formatDeal(deal) {
-  const name = cleanText(deal.name);
-  const desc = cleanText(deal.description);
+    console.log(`\n🔍 Processing: ${deal.name}`);
 
-  return `
-🔥 🟡 TRENDING
+    // Score
+    const scored = scoreDeal(deal);
 
-🔥 <b>${name}</b>
+    // Affiliate resolution
+    const enriched = resolveAffiliate(scored);
 
-${desc ? desc.slice(0, 120) : "AI / SaaS tool"}
+    console.log(`⭐ Score: ${enriched.score}`);
+    console.log(`🏷️ Affiliate: ${enriched.affiliateNetwork || "none"}`);
 
-📊 Score: ${deal.score}/10
+    // FILTER: only send monetizable or high score
+    if (!enriched.hasAffiliate && enriched.score < 5) {
+      console.log("❌ Skipping (no monetization + low score)");
+      continue;
+    }
 
-💰 Affiliate: ${deal.affiliateNetwork || "none"}
+    // ---------- BUILD MESSAGE ----------
+    const link = enriched.affiliateUrl || enriched.url;
 
-💰 Price: ${deal.price || "N/A"}
+    const message = `
+🔥 <b>${enriched.name}</b>
 
-👉 ${deal.url}
-`;
-}
+📊 Score: ${enriched.score}/10
 
-// ----------------------
-// MAIN PROCESS
-// ----------------------
-async function processDeals() {
-  console.log("🚀 Starting Deal Engine...");
+💰 Affiliate: ${enriched.affiliateNetwork || "none"}
 
-  const cache = loadCache();
-  console.log("💾 Cached deals:", cache.length);
+💰 Price: ${enriched.price || "N/A"}
 
-  const deals = await getDeals();
+👉 ${link}
+    `.trim();
 
-  let sent = 0;
-  let failed = 0;
+    // ---------- SEND ----------
+    const targetChannel = CHANNELS[enriched.category];
 
-  for (const rawDeal of deals) {
+    if (!targetChannel) {
+      console.log("⚠️ No channel match");
+      continue;
+    }
+
+    console.log(`➡️ Sending to channel...`);
+
     try {
-      if (cache.includes(rawDeal.url)) {
-        console.log("⏭️ Skipping cached:", rawDeal.url);
-        continue;
-      }
+      await sendMessage(targetChannel, message);
+      console.log("✅ Sent");
 
-      const deal = scoreDeal(rawDeal);
+      addToCache(cache, deal.url);
+      saveJSON(CACHE_FILE, cache);
 
-      console.log("\n==============================");
-      console.log("🔍 Processing:", deal.name);
-      console.log("⭐ Score:", deal.score);
-
-      if (deal.score < MIN_SCORE) {
-        console.log("⛔ Skipped (low score)");
-        continue;
-      }
-
-      // ----------------------
-      // CHANNEL ROUTING
-      // ----------------------
-      const channels = [];
-
-      if (deal.name.toLowerCase().includes("ai")) {
-        if (CHANNELS.ai) channels.push(CHANNELS.ai);
-      } else {
-        if (CHANNELS.saas) channels.push(CHANNELS.saas);
-      }
-
-      if (!channels.length) {
-        console.log("⚠️ No channels");
-        continue;
-      }
-
-      const message = cleanText(formatDeal(deal));
-
-      console.log("🧪 LENGTH:", message.length);
-      console.log("🧪 SAMPLE:", message.slice(0, 100));
-
-      // ----------------------
-      // SEND
-      // ----------------------
-      for (const channel of channels) {
-        console.log("➡️ Sending to:", channel);
-
-        const ok = await sendWithRetry(channel, message);
-
-        if (ok) {
-          console.log("✅ Sent");
-          sent++;
-        } else {
-          console.log("❌ Failed");
-          failed++;
-        }
-
-        // 🚨 CRITICAL FIX
-        await sleep(800 + Math.random() * 400);
-      }
-
-      // ----------------------
-      // UPDATE CACHE
-      // ----------------------
-      cache.push(rawDeal.url);
+      // prevent Telegram spam errors
+      await sleep(1500);
 
     } catch (err) {
-      console.log("❌ Error:", err.message);
-      failed++;
+      console.log("❌ Send failed:", err.message);
     }
   }
 
-  saveCache(cache);
-
-  console.log("\n==============================");
-  console.log("✅ DONE");
-  console.log("📤 Sent:", sent);
-  console.log("❌ Failed:", failed);
+  console.log("\n✅ Pipeline complete");
 }
 
-// ----------------------
-// RUN SCRIPT
-// ----------------------
-if (require.main === module) {
-  processDeals().catch(err => {
-    console.error("❌ Fatal:", err);
-    process.exit(1);
-  });
-}
+// ---------- RUN ----------
+run();
