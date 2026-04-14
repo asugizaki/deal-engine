@@ -6,6 +6,12 @@ const PORT = process.env.PORT || 3000;
 
 const DEALS_FILE = "./deals.json";
 
+app.use(express.json());
+
+// =========================
+// Helpers
+// =========================
+
 function loadDeals() {
   if (!fs.existsSync(DEALS_FILE)) return [];
   return JSON.parse(fs.readFileSync(DEALS_FILE));
@@ -15,18 +21,27 @@ function saveDeals(deals) {
   fs.writeFileSync(DEALS_FILE, JSON.stringify(deals, null, 2));
 }
 
-function recordClick(slug) {
-  const deals = loadDeals();
+// =========================
+// API: Save deals (from engine)
+// =========================
 
-  const updated = deals.map(d => {
-    if (d.slug === slug) {
-      return { ...d, clicks: (d.clicks || 0) + 1 };
-    }
-    return d;
-  });
+app.post("/api/deals", (req, res) => {
+  const incomingDeals = req.body;
 
-  saveDeals(updated);
-}
+  if (!Array.isArray(incomingDeals)) {
+    return res.status(400).json({ error: "Invalid format" });
+  }
+
+  saveDeals(incomingDeals);
+
+  console.log(`💾 Saved ${incomingDeals.length} deals`);
+
+  res.json({ success: true });
+});
+
+// =========================
+// Redirect
+// =========================
 
 app.get("/go/:slug", (req, res) => {
   const slug = req.params.slug;
@@ -38,14 +53,18 @@ app.get("/go/:slug", (req, res) => {
     return res.redirect("https://pochify.com");
   }
 
-  recordClick(slug);
+  // Track click
+  deal.clicks = (deal.clicks || 0) + 1;
+  saveDeals(deals);
 
   const target = deal.affiliateLink || deal.url;
 
-  console.log(`➡️ Redirecting ${slug} → ${target}`);
+  console.log(`➡️ ${slug} → ${target}`);
 
   res.redirect(target);
 });
+
+// =========================
 
 app.get("/", (req, res) => {
   res.send("Pochify backend running 🚀");
