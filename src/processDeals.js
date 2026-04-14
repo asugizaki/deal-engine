@@ -1,8 +1,33 @@
+// src/processDeals.js
+
 import { sendMessage } from "./sendMessage.js";
 
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+// =========================
+// CHANNEL ROUTING LOGIC
+// =========================
 
-// mock or real deals
+function getChatId(deal) {
+  const text = `${deal.name} ${deal.description}`.toLowerCase();
+
+  // AI-related deals
+  if (text.includes("ai")) {
+    return process.env.TELEGRAM_AI;
+  }
+
+  // SaaS tools
+  if (text.includes("saas")) {
+    return process.env.TELEGRAM_SAAS;
+  }
+
+  // fallback channel
+  return process.env.TELEGRAM_GENERAL;
+}
+
+// =========================
+// MOCK / ENGINE OUTPUT
+// (replace with your real pipeline later)
+// =========================
+
 function getDeals() {
   return [
     {
@@ -18,6 +43,10 @@ function getDeals() {
   ];
 }
 
+// =========================
+// MAIN
+// =========================
+
 async function run() {
   console.log("🚀 Processing deals...");
 
@@ -25,22 +54,17 @@ async function run() {
 
   console.log(`📦 Built ${deals.length} deals`);
 
-  // 1. Send to Railway
-  const res = await fetch("https://go.pochify.com/api/deals", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(deals)
-  });
-
-  const data = await res.json();
-  console.log("📡 Backend response:", data);
-
-  // 2. SEND TELEGRAM (THIS WAS MISSING)
   for (const deal of deals) {
-    console.log("➡️ Sending Telegram for:", deal.name);
-    await sendMessage(CHAT_ID, deal);
+    const chatId = getChatId(deal);
+
+    console.log("➡️ Routing:", deal.name, "→", chatId);
+
+    if (!chatId) {
+      console.log("❌ Missing chatId for:", deal.name);
+      continue;
+    }
+
+    await sendMessage(chatId, deal);
   }
 
   console.log("🏁 Done");
