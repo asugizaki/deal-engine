@@ -75,11 +75,11 @@ async function run() {
 
     console.log(`\n🔍 Processing: ${deal.name}`);
 
-    // Score
-    const scored = scoreDeal(deal);
-
     // Affiliate resolution
     const enriched = resolveAffiliate(scored);
+    
+    // Score
+    const scored = scoreDeal(deal);
 
     console.log(`⭐ Score: ${enriched.score}`);
     console.log(`🏷️ Affiliate: ${enriched.affiliateNetwork || "none"}`);
