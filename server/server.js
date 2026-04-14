@@ -1,83 +1,94 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
+import { createClient } from "@supabase/supabase-js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🔥 FIX: absolute-safe file path
-const DEALS_FILE = path.resolve("./deals.json");
-
 app.use(express.json());
 
 // =========================
-// Load / Save
+// SUPABASE INIT
 // =========================
 
-function loadDeals() {
-  try {
-    if (!fs.existsSync(DEALS_FILE)) return [];
-    return JSON.parse(fs.readFileSync(DEALS_FILE, "utf-8"));
-  } catch (e) {
-    console.error("❌ loadDeals error:", e);
-    return [];
-  }
-}
-
-function saveDeals(deals) {
-  fs.writeFileSync(DEALS_FILE, JSON.stringify(deals, null, 2));
-}
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 // =========================
-// API
-// =========================
-
-app.post("/api/deals", (req, res) => {
-  const deals = req.body;
-
-  if (!Array.isArray(deals)) {
-    return res.status(400).json({ error: "Invalid format" });
-  }
-
-  saveDeals(deals);
-
-  console.log(`💾 Saved ${deals.length} deals`);
-  console.log("🧪 SAMPLE SLUGS:", deals.map(d => d.slug));
-
-  res.json({ success: true });
-});
-
-// =========================
-// REDIRECT (FIXED DEBUG)
-// =========================
-
-app.get("/go/:slug", (req, res) => {
-  const slug = req.params.slug;
-
-  const deals = loadDeals();
-
-  console.log("🔍 Looking for slug:", slug);
-  console.log("📦 Available slugs:", deals.map(d => d.slug));
-
-  const deal = deals.find(d => d.slug === slug);
-
-  if (!deal) {
-    console.log("❌ NOT FOUND → fallback");
-    return res.redirect("https://pochify.com");
-  }
-
-  const target = deal.affiliateLink || deal.url;
-
-  console.log("✅ REDIRECT:", slug, "→", target);
-
-  res.redirect(target);
-});
-
+// HEALTH CHECK
 // =========================
 
 app.get("/", (req, res) => {
   res.send("Pochify backend running 🚀");
 });
+
+// =========================
+// SAVE / SYNC DEALS
+// =========================
+
+app.post("/api/deals", async (req, res) => {
+  const deals = req.body;
+
+  if (!Array.isArray(deals)) {
+    return res.status(400).json({
+      error: "Expected an array of deals"
+    });
+  }
+
+  const formattedDeals = deals.map((d) => ({
+    name: d.name,
+    slug: d.slug,
+    description: d.description || "",
+    url: d.url || "",
+    affiliate_link: d.affiliateLink || null
+  }));
+
+  const { error } = await supabase
+    .from("deals")
+    .upsert(formattedDeals, { onConflict: "slug" });
+
+  if (error) {
+    console.error("❌ Supabase insert error:", error);
+    return res.status(500).json({ error });
+  }
+
+  console.log(`💾 Saved deals: ${formattedDeals.length}`);
+
+  res.json({ success: true });
+});
+
+// =========================
+// REDIRECT ROUTE (/go/:slug)
+// =========================
+
+app.get("/go/:slug", async (req, res) => {
+  const slug = req.params.slug;
+
+  const { data, error } = await supabase
+    .from("deals")
+    .select("*")
+    .eq("slug", slug)
+    .single();
+
+  if (error || !data) {
+    console.log("❌ Deal not found:", slug);
+    return res.redirect("https://pochify.com");
+  }
+
+  const targetUrl =
+    data.affiliate_link ||
+    data.url ||
+    "https://pochify.com";
+
+  console.log(`✅ Redirect: ${slug} → ${targetUrl}`);
+
+  return res.redirect(targetUrl);
+});
+
+// =========================
+// START SERVER
+// =========================
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
