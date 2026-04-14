@@ -1,61 +1,32 @@
-import fs from "fs";
+import { sendMessage } from "./sendMessage.js";
 
-// =========================
-// CONFIG
-// =========================
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-const BACKEND_URL = "https://go.pochify.com/api/deals";
-
-// =========================
-// Helpers
-// =========================
-
-function slugify(name) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
-// =========================
-// MOCK DEALS (replace with your real pipeline)
-// =========================
-
+// mock or real deals
 function getDeals() {
   return [
     {
       name: "Notion AI",
       description: "AI writing assistant inside Notion",
-      url: "https://notion.so",
+      slug: "notion-ai"
     },
     {
       name: "Jasper AI",
-      description: "AI content generation platform",
-      url: "https://jasper.ai",
+      description: "AI content generation tool",
+      slug: "jasper-ai"
     }
   ];
 }
 
-// =========================
-// MAIN
-// =========================
-
 async function run() {
   console.log("🚀 Processing deals...");
 
-  const rawDeals = getDeals();
-
-  const deals = rawDeals.map(d => ({
-    ...d,
-    slug: slugify(d.name),
-    affiliateLink: null,
-    clicks: 0
-  }));
+  const deals = getDeals();
 
   console.log(`📦 Built ${deals.length} deals`);
 
-  // Send to Railway
-  const res = await fetch(BACKEND_URL, {
+  // 1. Send to Railway
+  const res = await fetch("https://go.pochify.com/api/deals", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -64,8 +35,13 @@ async function run() {
   });
 
   const data = await res.json();
-
   console.log("📡 Backend response:", data);
+
+  // 2. SEND TELEGRAM (THIS WAS MISSING)
+  for (const deal of deals) {
+    console.log("➡️ Sending Telegram for:", deal.name);
+    await sendMessage(CHAT_ID, deal);
+  }
 
   console.log("🏁 Done");
 }
