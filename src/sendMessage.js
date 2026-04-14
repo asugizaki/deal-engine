@@ -1,11 +1,10 @@
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+export async function sendMessage(chatId, text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
 
-async function sendMessage(chatId, text) {
-  if (!TELEGRAM_BOT_TOKEN) {
-    throw new Error("Missing TELEGRAM_BOT_TOKEN");
-  }
+  if (!token) throw new Error("Missing TELEGRAM_BOT_TOKEN");
+  if (!chatId) throw new Error("Missing chatId");
 
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
 
   const payload = {
     chat_id: chatId,
@@ -16,20 +15,16 @@ async function sendMessage(chatId, text) {
 
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
 
-  if (!data.ok) {
+  if (!res.ok) {
     console.log("❌ Telegram error:", data);
-    return false;
+    throw new Error(`Telegram send failed: ${res.status}`);
   }
 
-  return true;
+  return data;
 }
-
-module.exports = { sendMessage };
