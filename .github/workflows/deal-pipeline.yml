@@ -9,6 +9,9 @@ jobs:
   run:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -18,7 +21,7 @@ jobs:
 
       - run: npm install
 
-      - name: Run deal pipeline
+      - name: Generate pages and sync backend
         run: node src/processDeals.js
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -26,10 +29,21 @@ jobs:
           TELEGRAM_SAAS: ${{ secrets.TELEGRAM_SAAS }}
           TELEGRAM_GENERAL: ${{ secrets.TELEGRAM_GENERAL }}
 
-      - name: Commit cache
+      - name: Commit generated content
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/cache.json
-          git commit -m "update cache" || exit 0
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com}"
+          git add public/deals public/sitemap.xml data/cache.json
+          git commit -m "update generated deal pages and cache" || exit 0
           git push
+
+      - name: Wait for GitHub Pages to update
+        run: sleep 30
+
+      - name: Send Telegram messages
+        run: node src/sendTelegramDeals.js
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_AI: ${{ secrets.TELEGRAM_AI }}
+          TELEGRAM_SAAS: ${{ secrets.TELEGRAM_SAAS }}
+          TELEGRAM_GENERAL: ${{ secrets.TELEGRAM_GENERAL }}
