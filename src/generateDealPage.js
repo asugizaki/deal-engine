@@ -18,7 +18,7 @@ function ensureDir(dirPath) {
 }
 
 function getDealPagePath(slug) {
-  return path.join("public", "deals", `${slug}.html`);
+  return path.join("deals", `${slug}.html`);
 }
 
 function buildDealHtml(deal) {
@@ -170,7 +170,7 @@ function buildDealHtml(deal) {
 }
 
 export function generateDealPage(deal) {
-  ensureDir(path.join("public", "deals"));
+  ensureDir("deals");
   const filePath = getDealPagePath(deal.slug);
   const html = buildDealHtml(deal);
   fs.writeFileSync(filePath, html, "utf8");
@@ -195,5 +195,5 @@ ${urls
   .join("\n")}
 </urlset>`;
 
-  fs.writeFileSync(path.join("public", "sitemap.xml"), xml, "utf8");
+  fs.writeFileSync("sitemap.xml", xml, "utf8");
 }
