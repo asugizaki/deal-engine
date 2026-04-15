@@ -33,7 +33,7 @@ function buildDealHtml(deal) {
   const benefits = (deal.benefits || [
     "Helps you move faster",
     "Easy to get started with",
-    "Can improve productivity quickly",
+    "Can improve productivity quickly"
   ]).slice(0, 3);
 
   const whyNow = escapeHtml(
@@ -181,7 +181,7 @@ export function generateSitemap(deals) {
   ensureDir("public");
   const urls = [
     `${SITE_URL}/`,
-    ...deals.map((d) => `${SITE_URL}/deals/${d.slug}.html`),
+    ...deals.map((d) => `${SITE_URL}/deals/${d.slug}.html`)
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
