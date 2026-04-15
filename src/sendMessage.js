@@ -21,9 +21,9 @@ export async function sendMessage(chatId, deal) {
 ${deal.description}
 
 💡 <b>Why this is worth checking:</b>
-• Useful for people exploring this category
-• Worth a quick look before it gets crowded
-• We broke down who it's best for on the page below
+• We broke down what it does and who it is best for
+• Easier to judge quickly before clicking out
+• Useful if you want a clearer overview first
 
 👉 <a href="${pageUrl}">Read the full breakdown</a>
 `.trim();
