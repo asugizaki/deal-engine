@@ -1,4 +1,5 @@
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const SITE_URL = "https://pochify.com";
 
 export async function sendMessage(chatId, deal) {
   if (!chatId) {
@@ -12,33 +13,33 @@ export async function sendMessage(chatId, deal) {
   }
 
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-  const trackingLink = `https://go.pochify.com/go/${deal.slug}`;
+  const pageUrl = `${SITE_URL}/deals/${deal.slug}.html`;
 
   const message = `
 🔥 <b>${deal.name}</b>
 
 ${deal.description}
 
-👉 <b>Why this is worth checking:</b>
-• Trending tool in its category
-• Early adoption opportunity
-• Strong interest right now
+💡 <b>Why this is worth checking:</b>
+• Useful for people exploring this category
+• Worth a quick look before it gets crowded
+• We broke down who it's best for on the page below
 
-🔗 ${trackingLink}
+👉 <a href="${pageUrl}">Read the full breakdown</a>
 `.trim();
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         chat_id: chatId,
         text: message,
         parse_mode: "HTML",
-        disable_web_page_preview: false,
-      }),
+        disable_web_page_preview: false
+      })
     });
 
     const data = await res.json();
