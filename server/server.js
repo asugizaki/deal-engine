@@ -6,11 +6,16 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// =========================
-// SUPABASE INIT
-// =========================
-console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
-console.log("SUPABASE_KEY exists:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("❌ Missing Supabase environment variables");
+  console.error("SUPABASE_URL:", process.env.SUPABASE_URL);
+  console.error(
+    "SUPABASE_KEY exists:",
+    !!process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  process.exit(1);
+}
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -19,7 +24,6 @@ const supabase = createClient(
 // =========================
 // HEALTH CHECK
 // =========================
-
 app.get("/", (req, res) => {
   res.send("Pochify backend running 🚀");
 });
@@ -27,22 +31,23 @@ app.get("/", (req, res) => {
 // =========================
 // SAVE / SYNC DEALS
 // =========================
-
 app.post("/api/deals", async (req, res) => {
   const deals = req.body;
 
   if (!Array.isArray(deals)) {
     return res.status(400).json({
-      error: "Expected an array of deals"
+      error: "Expected an array of deals",
     });
   }
+
+  console.log("📥 /api/deals received:", JSON.stringify(deals, null, 2));
 
   const formattedDeals = deals.map((d) => ({
     name: d.name,
     slug: d.slug,
     description: d.description || "",
     url: d.url || "",
-    affiliate_link: d.affiliateLink || null
+    affiliate_link: d.affiliateLink || null,
   }));
 
   const { error } = await supabase
@@ -55,14 +60,14 @@ app.post("/api/deals", async (req, res) => {
   }
 
   console.log(`💾 Saved deals: ${formattedDeals.length}`);
+  console.log("🧪 SAMPLE SLUGS:", formattedDeals.map((d) => d.slug));
 
   res.json({ success: true });
 });
 
 // =========================
-// REDIRECT ROUTE (/go/:slug)
+// REDIRECT ROUTE
 // =========================
-
 app.get("/go/:slug", async (req, res) => {
   const slug = req.params.slug;
 
@@ -73,23 +78,16 @@ app.get("/go/:slug", async (req, res) => {
     .single();
 
   if (error || !data) {
-    console.log("❌ Deal not found:", slug);
+    console.log("❌ Deal not found:", slug, error || "");
     return res.redirect("https://pochify.com");
   }
 
-  const targetUrl =
-    data.affiliate_link ||
-    data.url ||
-    "https://pochify.com";
+  const targetUrl = data.affiliate_link || data.url || "https://pochify.com";
 
   console.log(`✅ Redirect: ${slug} → ${targetUrl}`);
 
   return res.redirect(targetUrl);
 });
-
-// =========================
-// START SERVER
-// =========================
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
