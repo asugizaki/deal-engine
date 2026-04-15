@@ -1,59 +1,82 @@
-// src/processDeals.js
-
 import { sendMessage } from "./sendMessage.js";
 
 // =========================
-// CHANNEL ROUTING LOGIC
+// CONFIG
 // =========================
+const BACKEND_URL = "https://go.pochify.com/api/deals";
+
+// =========================
+// HELPERS
+// =========================
+function slugify(name = "") {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
 
 function getChatId(deal) {
-  const text = `${deal.name} ${deal.description}`.toLowerCase();
+  const text = `${deal.name} ${deal.description || ""}`.toLowerCase();
 
-  // AI-related deals
-  if (text.includes("ai")) {
-    return process.env.TELEGRAM_AI;
-  }
+  if (text.includes("ai")) return process.env.TELEGRAM_AI;
+  if (text.includes("saas")) return process.env.TELEGRAM_SAAS;
 
-  // SaaS tools
-  if (text.includes("saas")) {
-    return process.env.TELEGRAM_SAAS;
-  }
-
-  // fallback channel
   return process.env.TELEGRAM_GENERAL;
 }
 
-// =========================
-// MOCK / ENGINE OUTPUT
-// (replace with your real pipeline later)
-// =========================
-
+// Replace this with your real sourcing pipeline later
 function getDeals() {
   return [
     {
       name: "Notion AI",
       description: "AI writing assistant inside Notion",
-      slug: "notion-ai"
+      url: "https://www.notion.so/product/ai",
+      affiliateLink: null,
     },
     {
       name: "Jasper AI",
-      description: "AI content generation tool",
-      slug: "jasper-ai"
-    }
+      description: "AI content generation tool for marketing teams",
+      url: "https://www.jasper.ai",
+      affiliateLink: null,
+    },
   ];
 }
 
 // =========================
 // MAIN
 // =========================
-
 async function run() {
   console.log("🚀 Processing deals...");
 
-  const deals = getDeals();
+  const rawDeals = getDeals();
+
+  const deals = rawDeals.map((d) => ({
+    name: d.name,
+    slug: slugify(d.name),
+    description: d.description || "",
+    url: d.url || "",
+    affiliateLink: d.affiliateLink || null,
+  }));
 
   console.log(`📦 Built ${deals.length} deals`);
 
+  // 1. Save deals to backend / Supabase
+  const res = await fetch(BACKEND_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(deals),
+  });
+
+  const data = await res.json();
+  console.log("📡 Backend response:", data);
+
+  if (!res.ok || !data.success) {
+    throw new Error("Failed to save deals to backend");
+  }
+
+  // 2. Send Telegram messages
   for (const deal of deals) {
     const chatId = getChatId(deal);
 
@@ -70,4 +93,7 @@ async function run() {
   console.log("🏁 Done");
 }
 
-run();
+run().catch((err) => {
+  console.error("❌ processDeals fatal error:", err);
+  process.exit(1);
+});
