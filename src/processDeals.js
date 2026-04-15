@@ -1,7 +1,28 @@
-import { sendMessage } from "./sendMessage.js";
+import fs from "fs";
+import path from "path";
 import { generateDealPage, generateSitemap } from "./generateDealPage.js";
 
 const BACKEND_URL = "https://go.pochify.com/api/deals";
+const CACHE_PATH = path.join("data", "cache.json");
+const PENDING_PATH = path.join("data", "pending-telegram.json");
+
+function ensureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function loadJson(filePath, fallback) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJson(filePath, data) {
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+}
 
 function slugify(name = "") {
   return name
@@ -10,77 +31,49 @@ function slugify(name = "") {
     .replace(/(^-|-$)/g, "");
 }
 
-function getChatId(deal) {
+function detectChannel(deal) {
   const text = `${deal.name} ${deal.description || ""}`.toLowerCase();
 
-  if (text.includes("ai")) return process.env.TELEGRAM_AI;
-  if (text.includes("saas")) return process.env.TELEGRAM_SAAS;
-
-  return process.env.TELEGRAM_GENERAL;
+  if (text.includes("ai")) return "ai";
+  if (text.includes("saas")) return "saas";
+  return "general";
 }
 
-// Replace this with your real sourcing pipeline
+// Replace this later with your real sourcing pipeline
 function getDeals() {
   return [
     {
       name: "Notion AI",
-      description: "AI writing assistant inside Notion",
+      description: "AI writing assistant inside Notion for drafting, summarizing, and faster document workflows.",
       url: "https://www.notion.so/product/ai",
       affiliateLink: null,
       audience: "Founders, students, operators, and knowledge workers",
       benefits: [
-        "Helps draft and summarize content faster",
-        "Works inside a tool many teams already use",
-        "Useful for notes, documents, and workflows"
+        "Speeds up writing and summarization",
+        "Fits naturally into existing Notion workflows",
+        "Useful for notes, docs, and knowledge management"
       ],
       whyNow:
-        "If you already use Notion, this is one of the easiest ways to add AI to your existing workflow."
+        "If you already use Notion, this is one of the easiest ways to add AI into work you are already doing."
     },
     {
       name: "Jasper AI",
-      description: "AI content generation tool for marketing teams",
+      description: "AI content generation tool built for marketing teams that need faster copy production.",
       url: "https://www.jasper.ai",
       affiliateLink: null,
       audience: "Marketing teams, freelancers, and content-heavy businesses",
       benefits: [
-        "Can speed up content production",
-        "Useful for drafting campaign copy",
-        "Popular in AI writing workflows"
+        "Can speed up campaign copy production",
+        "Helps generate first drafts quickly",
+        "Popular with teams testing AI writing workflows"
       ],
       whyNow:
-        "This is the kind of tool people usually test when they want faster content output without building an internal process first."
+        "This is the kind of tool people often test when they want faster content output without building a full internal system."
     }
   ];
 }
 
-async function run() {
-  console.log("🚀 Processing deals...");
-
-  const rawDeals = getDeals();
-
-  const deals = rawDeals.map((d) => ({
-    name: d.name,
-    slug: slugify(d.name),
-    description: d.description || "",
-    url: d.url || "",
-    affiliateLink: d.affiliateLink || null,
-    audience: d.audience || "",
-    benefits: d.benefits || [],
-    whyNow: d.whyNow || ""
-  }));
-
-  console.log(`📦 Built ${deals.length} deals`);
-
-  // 1. Generate static pages for GitHub Pages
-  for (const deal of deals) {
-    const filePath = generateDealPage(deal);
-    console.log("📝 Generated page:", filePath);
-  }
-
-  generateSitemap(deals);
-  console.log("🗺️ Generated sitemap");
-
-  // 2. Save deals to backend / Supabase
+async function syncDealsToBackend(deals) {
   const res = await fetch(BACKEND_URL, {
     method: "POST",
     headers: {
@@ -95,21 +88,42 @@ async function run() {
   if (!res.ok || !data.success) {
     throw new Error("Failed to save deals to backend");
   }
+}
 
-  // 3. Send Telegram messages linking to Pochify pages
+async function run() {
+  console.log("🚀 Processing deals...");
+
+  const cache = loadJson(CACHE_PATH, { sentSlugs: [] });
+  const rawDeals = getDeals();
+
+  const deals = rawDeals.map((d) => ({
+    name: d.name,
+    slug: slugify(d.name),
+    description: d.description || "",
+    url: d.url || "",
+    affiliateLink: d.affiliateLink || null,
+    audience: d.audience || "",
+    benefits: d.benefits || [],
+    whyNow: d.whyNow || "",
+    channel: detectChannel(d)
+  }));
+
+  console.log(`📦 Built ${deals.length} deals`);
+
   for (const deal of deals) {
-    const chatId = getChatId(deal);
-
-    console.log("➡️ Routing:", deal.name, "→", chatId);
-
-    if (!chatId) {
-      console.log("❌ Missing chatId for:", deal.name);
-      continue;
-    }
-
-    await sendMessage(chatId, deal);
+    const filePath = generateDealPage(deal);
+    console.log("📝 Generated page:", filePath);
   }
 
+  generateSitemap(deals);
+  console.log("🗺️ Generated sitemap");
+
+  await syncDealsToBackend(deals);
+
+  const pending = deals.filter((deal) => !cache.sentSlugs.includes(deal.slug));
+  saveJson(PENDING_PATH, pending);
+
+  console.log(`📨 Pending Telegram deals: ${pending.length}`);
   console.log("🏁 Done");
 }
 
